@@ -1,2 +1,2 @@
 # ajedrezpown
-Grupo Ajedrez**n
+Grupo Ajedrez^n
