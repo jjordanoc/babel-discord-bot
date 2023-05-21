@@ -1,21 +1,21 @@
 const { SlashCommandRegistry } = require('discord-command-registry');
 const { joinVoiceChannel } = require('@discordjs/voice');
-
+const axios = require('axios');
 
 /*
 Define command metadata
 */
 const commandList = [
 	{
-		'name' : 'ping',
-		'description' : 'Ping pong command',
-		'handler' : pingPongHandler,
+		'name': 'ping',
+		'description': 'Ping pong command',
+		'handler': pingPongHandler,
 	},
 	{
-		'name' : 'join',
-		'description' : 'Joins the voice channel of the calling user.',
-		'handler' : joinHandler,
-	}
+		'name': 'join',
+		'description': 'Joins the voice channel of the calling user.',
+		'handler': joinHandler,
+	},
 ];
 
 const commands = new SlashCommandRegistry();
@@ -34,13 +34,31 @@ function pingPongHandler(interaction) {
 	return interaction.reply('pong');
 }
 
-function joinHandler(interaction) {
-	const conn = joinVoiceChannel({
+async function joinHandler(interaction) {
+	const guildId = interaction.guild.id;
+	const userId = interaction.member.id;
+	console.log(`User ID: ${userId}`);
+	const connection = joinVoiceChannel({
 		channelId: interaction.member.voice.channel.id,
-		guildId: interaction.guild.id,
-  		adapterCreator: interaction.guild.voiceAdapterCreator,
+		guildId: guildId,
+		adapterCreator: interaction.guild.voiceAdapterCreator,
 	});
-	return interaction.reply("Joined voice channel " + interaction.member.voice.channel.name);
+	try {
+		const response = await axios.post('http://localhost:3000/listen', JSON.stringify({ guildId, userId }), {
+			headers: { 'content-type': 'application/json' },
+		});
+		if (response.status === 200) {
+			await interaction.reply(`Listening to user ${userId} in voice channel ${interaction.member.voice.channel.name}`);
+		}
+		else {
+			await interaction.reply('An error occurred while joining the voice channel. Please try again later.');
+			connection.destroy();
+		}
+	}
+	catch (e) {
+		await interaction.reply('An error occurred while joining the voice channel. Please try again later.');
+		connection.destroy();
+	}
 }
 
 
