@@ -22,29 +22,20 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 exports.__esModule = true;
-var voice_1 = require("@discordjs/voice");
-var express_1 = __importDefault(require("express"));
-var node_stream_1 = require("node:stream");
-var prism = __importStar(require("prism-media"));
+exports.createListeningStream = void 0;
 var node_fs_1 = require("node:fs");
-var body_parser_1 = __importDefault(require("body-parser"));
-var app = (0, express_1["default"])();
-app.use(body_parser_1["default"].json());
-var port = 3000;
-app.post("/listen", function (req, res) {
-    var _a = req.body, guildId = _a.guildId, userId = _a.userId;
-    console.log("body: ".concat(JSON.stringify(req.body), ", guildId: ").concat(guildId, ", userId: ").concat(userId));
-    var connection = (0, voice_1.getVoiceConnection)(guildId);
-    res.status(200).send("Successfully started listening to voice channel ".concat(guildId));
-    var receiver = connection.receiver;
+var node_stream_1 = require("node:stream");
+var voice_1 = require("@discordjs/voice");
+var prism = __importStar(require("prism-media"));
+function getDisplayName(userId, user) {
+    return user ? "".concat(user.username, "_").concat(user.discriminator) : userId;
+}
+function createListeningStream(receiver, userId, user) {
     var opusStream = receiver.subscribe(userId, {
         end: {
             behavior: voice_1.EndBehaviorType.AfterSilence,
-            duration: 1000
+            duration: 10000
         }
     });
     var oggStream = new prism.opus.OggLogicalBitstream({
@@ -56,7 +47,7 @@ app.post("/listen", function (req, res) {
             maxPackets: 10
         }
     });
-    var filename = "./recordings/".concat(Date.now(), ".ogg");
+    var filename = "C:/Users/rojot/OneDrive/Escritorio/ajedrezpown/InteractionHandler/recordings/".concat(Date.now(), "-").concat(getDisplayName(userId, user), ".ogg");
     var out = (0, node_fs_1.createWriteStream)(filename);
     console.log("\uD83D\uDC42 Started recording ".concat(filename));
     (0, node_stream_1.pipeline)(opusStream, oggStream, out, function (err) {
@@ -67,7 +58,5 @@ app.post("/listen", function (req, res) {
             console.log("\u2705 Recorded ".concat(filename));
         }
     });
-});
-app.listen(port, function () {
-    console.log("Example app listening on port ".concat(port));
-});
+}
+exports.createListeningStream = createListeningStream;
