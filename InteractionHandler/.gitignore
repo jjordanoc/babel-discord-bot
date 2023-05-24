@@ -1,0 +1,8 @@
+config.json
+node_modules
+.env
+recordings
+bot.js
+commands.js
+register.js
+createListeningStream.js
