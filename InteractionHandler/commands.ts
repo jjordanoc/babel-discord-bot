@@ -1,6 +1,7 @@
 import pkg from 'discord-command-registry';
 import { entersState, getVoiceConnection, joinVoiceChannel, VoiceConnectionStatus } from '@discordjs/voice';
 import { createListeningStream } from './createListeningStream';
+import { VoiceChannel } from 'discord.js';
 
 const { SlashCommandRegistry } = pkg;
 
@@ -38,14 +39,19 @@ Joins the voice channel and (temporarily) starts recording the user's audio
  */
 async function joinHandler(interaction) {
 	const guildId: string = interaction.guild.id;
-	// const userId: string = interaction.member.id;
+	const channel: VoiceChannel | null = interaction.member.voice.channel;
+	if (channel == null) {
+		interaction.reply({ ephemeral: true, content: 'Join voice channel first.' });
+		return;
+	}
 	const connection = joinVoiceChannel({
-		channelId: interaction.member.voice.channel.id,
+		channelId: channel?.id,
 		guildId: guildId,
 		adapterCreator: interaction.guild.voiceAdapterCreator,
 		selfDeaf: false,
 		selfMute: true,
 	});
+
 	try {
 		await entersState(connection, VoiceConnectionStatus.Ready, 20e3);
 		const receiver = connection.receiver;
