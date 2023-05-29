@@ -1,4 +1,3 @@
-
 import itertools
 import queue
 
@@ -111,8 +110,8 @@ def do_translation_loop():
 
     speech_config = media.TranslateSpeechConfig(
         audio_encoding="linear16",
-        source_language_code="en-US",
-        target_language_code="es-ES",
+        source_language_code="pt-BR",
+        target_language_code="en-US",
     )
 
     config = media.StreamingTranslateSpeechConfig(
