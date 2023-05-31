@@ -93,7 +93,6 @@ def listen_print_loop(responses):
         # Once the transcription settles, the response contains the
         # END_OF_SINGLE_UTTERANCE event.
         if response.speech_event_type == SpeechEventType.END_OF_SINGLE_UTTERANCE:
-
             print(f"\nFinal translation: {translation}")
             return 0
 
@@ -110,7 +109,7 @@ def do_translation_loop():
 
     speech_config = media.TranslateSpeechConfig(
         audio_encoding="linear16",
-        source_language_code="pt-BR",
+        source_language_code="es-ES",
         target_language_code="en-US",
     )
 
