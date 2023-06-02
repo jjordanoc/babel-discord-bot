@@ -21,6 +21,9 @@ from google.cloud import mediatranslation as media
 import pyaudio
 from dotenv import load_dotenv
 
+import io
+import audioread
+
 load_dotenv()
 
 # Audio recording parameters
@@ -30,17 +33,18 @@ SpeechEventType = media.StreamingTranslateSpeechResponse.SpeechEventType
 
 app = FastAPI()
 
+
 def generator(q: Queue):
     while True:
-        logging.info("Generating bytes from queue...")
+        # print("Generating bytes from queue...")
         data_bytes: bytes = q.get()
-        yield data_bytes
+        yield media.StreamingTranslateSpeechRequest(audio_content=data_bytes)
 
 
 def translation_worker(q: Queue):
     print("Started worker")
     try:
-        logging.info("Begin speaking...")
+        print("Begin speaking...")
 
         client = media.SpeechTranslationServiceClient()
 
@@ -48,6 +52,7 @@ def translation_worker(q: Queue):
             audio_encoding="linear16",
             source_language_code="es-ES",
             target_language_code="en-US",
+            sample_rate_hertz=48000
         )
 
         config = media.StreamingTranslateSpeechConfig(
@@ -57,23 +62,26 @@ def translation_worker(q: Queue):
         # The first request contains the configuration.
         # Note that audio_content is explicitly set to None.
         first_request = media.StreamingTranslateSpeechRequest(streaming_config=config)
+        print("Creted first request")
 
-        audio_generator = generator(q)
-        mic_requests = (
-            media.StreamingTranslateSpeechRequest(audio_content=content)
-            for content in audio_generator
-        )
+        # audio_generator = generator(q)
+        # mic_requests = (
+        #     media.StreamingTranslateSpeechRequest(audio_content=content)
+        #     for content in audio_generator
+        # )
 
-        requests = itertools.chain(iter([first_request]), mic_requests)
+        requests = itertools.chain(iter([first_request]), generator(q))
+        print("Created requests iterator")
 
         responses = client.streaming_translate_speech(requests)
+        print("Created responses from request")
 
         # Print the translation responses as they arrive
         result = listen_print_loop(responses)
-        logging.info(f"Finished translation worker with result ${result}...")
+        print(f"Finished translation worker with result ${result}...")
 
     except Exception as e:
-        logging.debug(e)
+        print("Error:", e)
 
 
 def listen_print_loop(responses):
@@ -99,29 +107,30 @@ def listen_print_loop(responses):
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     await websocket.accept()
-    logging.info('websocket.accept')
+    print('websocket.accept')
 
     ctx = multiprocessing.get_context()
     queue = ctx.Queue()
-    process = ctx.Process(target=translation_worker, args=(queue, ))
+    process = ctx.Process(target=translation_worker, args=(queue,))
     process.start()
     counter = 0
 
     try:
         while True:
             audio_bytes: bytes = await websocket.receive_bytes()
+            # print(audio_bytes)
             queue.put(audio_bytes)
             counter += 1
     except Exception as e:
-        logging.debug(e)
+        print("Error in socket:", e)
     finally:
         # Wait for the worker to finish
         queue.close()
         queue.join_thread()
         # use terminate so the while True loop in process will exit
         process.terminate()
-        process.join()
-    logging.info('leave websocket_endpoint')
+
+    print('leave websocket_endpoint')
 
 
 if __name__ == '__main__':
@@ -130,6 +139,6 @@ if __name__ == '__main__':
     try:
         set_start_method('spawn')
     except RuntimeError as e:
-        print(e)
+        print("Runtime error:", e)
 
-    uvicorn.run('api:app', host='0.0.0.0', reload=True, log_level="debug")
+    uvicorn.run('api:app', host='0.0.0.0')

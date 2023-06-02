@@ -4,6 +4,7 @@ import { EndBehaviorType, VoiceReceiver } from '@discordjs/voice';
 import type { User } from 'discord.js';
 import * as prism from 'prism-media';
 import { WebSocket } from 'ws';
+// import { ogg } from 'prism-media';
 
 function getDisplayName(userId: string, user?: User) {
 	return user ? `${user.username}_${user.discriminator}` : userId;
@@ -16,8 +17,25 @@ export function createListeningStream(receiver: VoiceReceiver, userId: string, u
 			behavior: EndBehaviorType.Manual,
 		},
 	});
+	const decoder = opusStream
+		// .pipe(new prism.opus.OggLogicalBitstream({
+		// 	opusHead: new prism.opus.OpusHead({
+		// 		channelCount: 2,
+		// 		sampleRate: 48000,
+		// 	}),
+		// 	pageSizeControl: {
+		// 		maxPackets: 10,
+		// 	},
+		// }))
+		// .pipe(new prism.opus.OggDemuxer())
+		.pipe(new prism.opus.Decoder({
+			rate: 48000,
+			channels: 1,
+			frameSize: 960,
+		}));
+	// const oggStream = ;
 	audioSocket.on('open', () => {
-		opusStream.on('data', (chunk) => {
+		decoder.on('data', (chunk) => {
 			// if (audioSocket.readyState == audioSocket.OPEN) {
 			// 	audioSocket.send(chunk);
 			// }
@@ -26,25 +44,13 @@ export function createListeningStream(receiver: VoiceReceiver, userId: string, u
 			// 	console.log(`Attempted to send audio when Socket is still in ${audioSocket.readyState} state`);
 			// }
 		});
-		opusStream.on('close', () => {
+		decoder.on('close', () => {
 			audioSocket.close();
 		});
 	});
-
 	audioSocket.on('error', () => {
 		console.error('An error occurred while connecting to WebSocket');
 	});
-
-
-	// const oggStream = new prism.opus.OggLogicalBitstream({
-	// 	opusHead: new prism.opus.OpusHead({
-	// 		channelCount: 2,
-	// 		sampleRate: 48000,
-	// 	}),
-	// 	pageSizeControl: {
-	// 		maxPackets: 10,
-	// 	},
-	// });
 	//
 	//
 	//
