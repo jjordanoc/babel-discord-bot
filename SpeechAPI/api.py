@@ -1,28 +1,15 @@
-import logging
-import uuid
-import pyogg
-
-"""
-Source: https://github.com/Honghe/demo_fastapi_websocket/blob/master/src/main.py
-"""
-
-from fastapi import FastAPI, WebSocket
+import itertools
 import multiprocessing
+import asyncio
 from multiprocessing import set_start_method
 from multiprocessing.queues import Queue
-import os
-import wave
-import time
+
 import uvicorn
-
-import itertools
-
-from google.cloud import mediatranslation as media
-import pyaudio
 from dotenv import load_dotenv
-
-import io
-import audioread
+from fastapi import FastAPI, WebSocket
+from google.cloud import mediatranslation as media
+from google.cloud.mediatranslation_v1beta1 import StreamingTranslateSpeechResponse
+from typing import Iterable, Callable
 
 load_dotenv()
 
@@ -34,9 +21,8 @@ SpeechEventType = media.StreamingTranslateSpeechResponse.SpeechEventType
 app = FastAPI()
 
 
-def generator(q: Queue):
+def audio_generator(q: Queue):
     while True:
-        # print("Generating bytes from queue...")
         data_bytes: bytes = q.get()
         yield media.StreamingTranslateSpeechRequest(audio_content=data_bytes)
 
@@ -56,7 +42,7 @@ def translation_worker(q: Queue):
         )
 
         config = media.StreamingTranslateSpeechConfig(
-            audio_config=speech_config, single_utterance=True
+            audio_config=speech_config
         )
 
         # The first request contains the configuration.
@@ -64,71 +50,63 @@ def translation_worker(q: Queue):
         first_request = media.StreamingTranslateSpeechRequest(streaming_config=config)
         print("Creted first request")
 
-        # audio_generator = generator(q)
-        # mic_requests = (
-        #     media.StreamingTranslateSpeechRequest(audio_content=content)
-        #     for content in audio_generator
-        # )
-
-        requests = itertools.chain(iter([first_request]), generator(q))
+        requests = itertools.chain(iter([first_request]), audio_generator(q))
         print("Created requests iterator")
 
         responses = client.streaming_translate_speech(requests)
         print("Created responses from request")
 
-        # Print the translation responses as they arrive
-        result = listen_print_loop(responses)
-        print(f"Finished translation worker with result ${result}...")
+        # Use the translation responses as they arrive
+        # out_queue.put(response for response in responses)
+        # asyncio.run(send_translation(responses))
+        for response in responses:
+            result = response.result
+            translation = result.text_translation_result.translation
+
+            if result.text_translation_result.is_final:
+                print(f"\nFinal translation: {translation}")
+            else:
+                print(f"\nPartial translation: {translation}")
+        print(f"Finished translation worker")
 
     except Exception as e:
         print("Error:", e)
-
-
-def listen_print_loop(responses):
-    """Iterates through server responses and prints them.
-
-    The responses passed is a generator that will block until a response
-    is provided by the server.
-    """
-    translation = ""
-    for response in responses:
-        # Once the transcription settles, the response contains the
-        # END_OF_SINGLE_UTTERANCE event.
-        if response.speech_event_type == SpeechEventType.END_OF_SINGLE_UTTERANCE:
-            print(f"\nFinal translation: {translation}")
-            return 0
-
-        result = response.result
-        translation = result.text_translation_result.translation
-
-        print(f"\nPartial translation: {translation}")
 
 
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     await websocket.accept()
     print('websocket.accept')
-
     ctx = multiprocessing.get_context()
+    # async def send_translation(q: Queue):
+    #     response = q.get()
+    #     translation = response.result.text_translation_result.translation
+    #     print(f"\nPartial translation: {translation}")
+    #     await websocket.send(translation)
     queue = ctx.Queue()
-    process = ctx.Process(target=translation_worker, args=(queue,))
+    out_queue = ctx.Queue()
+    process = ctx.Process(target=translation_worker, args=(queue, ))
     process.start()
-    counter = 0
-
+    # translation_sender = ctx.Process(target=send_translation, args=(out_queue, ))
+    # translation_sender.start()
+    # asyncio.run(send_translation(out_queue))
     try:
         while True:
             audio_bytes: bytes = await websocket.receive_bytes()
-            # print(audio_bytes)
             queue.put(audio_bytes)
-            counter += 1
     except Exception as e:
         print("Error in socket:", e)
     finally:
         # Wait for the worker to finish
         queue.close()
         queue.join_thread()
+        out_queue.close()
+        out_queue.join_thread()
         # use terminate so the while True loop in process will exit
         process.terminate()
+        process.join()
+        # translation_sender.terminate()
+        # translation_sender.join()
 
     print('leave websocket_endpoint')
 
