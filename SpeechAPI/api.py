@@ -1,9 +1,10 @@
 import itertools
 import multiprocessing
 import asyncio
+import os
 from multiprocessing import set_start_method
 from multiprocessing.queues import Queue
-
+import requests as req
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
@@ -65,6 +66,13 @@ def translation_worker(q: Queue):
 
             if result.text_translation_result.is_final:
                 print(f"\nFinal translation: {translation}")
+
+                azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
+                azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""", "Content-type": "application/ssml+xml", "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+                azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'> {translation} </voice></speak>"""
+                response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+
+                print(response_azure)
             else:
                 print(f"\nPartial translation: {translation}")
         print(f"Finished translation worker")
@@ -85,7 +93,7 @@ async def audio_socket(websocket: WebSocket):
     #     await websocket.send(translation)
     queue = ctx.Queue()
     out_queue = ctx.Queue()
-    process = ctx.Process(target=translation_worker, args=(queue, ))
+    process = ctx.Process(target=translation_worker, args=(queue,))
     process.start()
     # translation_sender = ctx.Process(target=send_translation, args=(out_queue, ))
     # translation_sender.start()
