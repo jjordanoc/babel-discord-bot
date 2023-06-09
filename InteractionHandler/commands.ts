@@ -30,13 +30,6 @@ for (let i = 0; i < commandList.length; ++i) {
 		.setHandler(commandList[i].handler));
 }
 
-/*
-Define command handlers
-*/
-
-/*
-Joins the voice channel and (temporarily) starts recording the user's audio
- */
 async function joinHandler(interaction) {
 	const guildId: string = interaction.guild.id;
 	const channel: VoiceChannel | null = interaction.member.voice.channel;
@@ -92,6 +85,5 @@ async function leaveHandler(interaction) {
 		interaction.reply({ ephemeral: true, content: 'Currently in idle. Join a voice channel to use this command.' });
 	}
 }
-
 
 export default commands;

@@ -31,9 +31,9 @@ def audio_generator(q: Queue):
 
 def translation_worker(in_queue: Queue, out_queue: Queue):
     print("Started worker")
+
     try:
         print("Begin speaking...")
-
         client = media.SpeechTranslationServiceClient()
 
         speech_config = media.TranslateSpeechConfig(
@@ -69,10 +69,13 @@ def translation_worker(in_queue: Queue, out_queue: Queue):
                 print(f"\nFinal translation: {translation}")
 
                 azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
+
                 azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
                                  "Content-type": "application/ssml+xml",
                                  "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+
                 azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'> {translation} </voice></speak>"""
+
                 response_azure = req.post(azure_url, headers=azure_headers,     data=azure_body)
                 print(len(response_azure.content), " TESTING ")
                 print(response_azure)
@@ -127,28 +130,6 @@ async def audio_socket(websocket: WebSocket):
         # use terminate so the while True loop in process will exit
         process.terminate()
         process.join()
-
-    # try:
-    #     while True:
-    #         # RECEIVE
-    #         audio_bytes: bytes = await websocket.receive_bytes()
-    #         in_queue.put(audio_bytes)
-    #         # SEND
-    #         while not out_queue.empty():
-    #             audio = out_queue.get(block=False)
-    #             print(audio, "XD")
-    #             await websocket.send_bytes(audio)
-    # except Exception as e:
-    #     print("Error in socket:", e)
-    # finally:
-    #     # Wait for the worker to finish
-    #     in_queue.close()
-    #     in_queue.join_thread()
-    #     out_queue.close()
-    #     out_queue.join_thread()
-    #     # use terminate so the while True loop in process will exit
-    #     process.terminate()
-    #     process.join()
 
     print('leave websocket_endpoint')
 
