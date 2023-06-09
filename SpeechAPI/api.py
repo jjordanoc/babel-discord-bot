@@ -2,6 +2,7 @@ import itertools
 import multiprocessing
 import asyncio
 import os
+import websockets
 from multiprocessing import set_start_method
 from multiprocessing.queues import Queue
 import requests as req
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
 from google.cloud import mediatranslation as media
 from google.cloud.mediatranslation_v1beta1 import StreamingTranslateSpeechResponse
-from typing import Iterable, Callable
+from typing import Iterable, Callable, List
 
 load_dotenv()
 
@@ -28,7 +29,7 @@ def audio_generator(q: Queue):
         yield media.StreamingTranslateSpeechRequest(audio_content=data_bytes)
 
 
-def translation_worker(q: Queue):
+def translation_worker(in_queue: Queue, out_queue: Queue):
     print("Started worker")
     try:
         print("Begin speaking...")
@@ -51,7 +52,7 @@ def translation_worker(q: Queue):
         first_request = media.StreamingTranslateSpeechRequest(streaming_config=config)
         print("Creted first request")
 
-        requests = itertools.chain(iter([first_request]), audio_generator(q))
+        requests = itertools.chain(iter([first_request]), audio_generator(in_queue))
         print("Created requests iterator")
 
         responses = client.streaming_translate_speech(requests)
@@ -68,11 +69,15 @@ def translation_worker(q: Queue):
                 print(f"\nFinal translation: {translation}")
 
                 azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
-                azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""", "Content-type": "application/ssml+xml", "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+                azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
+                                 "Content-type": "application/ssml+xml",
+                                 "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
                 azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'> {translation} </voice></speak>"""
-                response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
-
+                response_azure = req.post(azure_url, headers=azure_headers,     data=azure_body)
+                print(len(response_azure.content), " TESTING ")
                 print(response_azure)
+                audio = response_azure.content
+                out_queue.put(audio)
             else:
                 print(f"\nPartial translation: {translation}")
         print(f"Finished translation worker")
@@ -86,35 +91,64 @@ async def audio_socket(websocket: WebSocket):
     await websocket.accept()
     print('websocket.accept')
     ctx = multiprocessing.get_context()
-    # async def send_translation(q: Queue):
-    #     response = q.get()
-    #     translation = response.result.text_translation_result.translation
-    #     print(f"\nPartial translation: {translation}")
-    #     await websocket.send(translation)
-    queue = ctx.Queue()
+    in_queue = ctx.Queue()
     out_queue = ctx.Queue()
-    process = ctx.Process(target=translation_worker, args=(queue,))
+    process = ctx.Process(target=translation_worker, args=(in_queue, out_queue))
     process.start()
-    # translation_sender = ctx.Process(target=send_translation, args=(out_queue, ))
-    # translation_sender.start()
-    # asyncio.run(send_translation(out_queue))
-    try:
+
+    async def receive_audio():
         while True:
+            # RECEIVE
             audio_bytes: bytes = await websocket.receive_bytes()
-            queue.put(audio_bytes)
+            in_queue.put(audio_bytes)
+
+    async def send_audio():
+        while True:
+            # SEND
+            # Check if there's audio to send
+            while not out_queue.empty():
+                audio = out_queue.get()
+                await websocket.send_bytes(audio)
+            await asyncio.sleep(0.1)  # Prevent tight loop when there's nothing to send
+
+    receive_task = asyncio.create_task(receive_audio())
+    send_task = asyncio.create_task(send_audio())
+
+    try:
+        await asyncio.gather(receive_task, send_task)
     except Exception as e:
         print("Error in socket:", e)
     finally:
         # Wait for the worker to finish
-        queue.close()
-        queue.join_thread()
+        in_queue.close()
+        in_queue.join_thread()
         out_queue.close()
         out_queue.join_thread()
         # use terminate so the while True loop in process will exit
         process.terminate()
         process.join()
-        # translation_sender.terminate()
-        # translation_sender.join()
+
+    # try:
+    #     while True:
+    #         # RECEIVE
+    #         audio_bytes: bytes = await websocket.receive_bytes()
+    #         in_queue.put(audio_bytes)
+    #         # SEND
+    #         while not out_queue.empty():
+    #             audio = out_queue.get(block=False)
+    #             print(audio, "XD")
+    #             await websocket.send_bytes(audio)
+    # except Exception as e:
+    #     print("Error in socket:", e)
+    # finally:
+    #     # Wait for the worker to finish
+    #     in_queue.close()
+    #     in_queue.join_thread()
+    #     out_queue.close()
+    #     out_queue.join_thread()
+    #     # use terminate so the while True loop in process will exit
+    #     process.terminate()
+    #     process.join()
 
     print('leave websocket_endpoint')
 

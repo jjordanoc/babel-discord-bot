@@ -57,7 +57,7 @@ async function joinHandler(interaction) {
 		const receiver = connection.receiver;
 		receiver.speaking.once('start', (callerUserId) => {
 			console.log('User started speaking. Called event once.');
-			createListeningStream(receiver, interaction.user.id, interaction.client.users.cache.get(interaction.user.id));
+			createListeningStream(connection, interaction.user.id, interaction.client.users.cache.get(interaction.user.id));
 		});
 		interaction.reply({ ephemeral: true, content: 'Listening...' });
 	}
