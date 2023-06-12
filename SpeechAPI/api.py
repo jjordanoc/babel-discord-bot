@@ -17,8 +17,6 @@ from timeit import default_timer as timer
 load_dotenv()
 
 # Audio recording parameters
-RATE = 16000
-CHUNK = int(RATE / 10)  # 100ms
 SpeechEventType = media.StreamingTranslateSpeechResponse.SpeechEventType
 
 app = FastAPI()
@@ -32,66 +30,65 @@ def audio_generator(q: Queue):
 
 def translation_worker(in_queue: Queue, out_queue: Queue):
     print("Started worker")
-    while True:
-        print("Restarted worker")
-        try:
-            print("Begin speaking...")
-            client = media.SpeechTranslationServiceClient()
+    # while True:
+    #     print("Restarted worker")
+    try:
+        print("Begin speaking...")
+        client = media.SpeechTranslationServiceClient()
 
-            speech_config = media.TranslateSpeechConfig(
-                audio_encoding="linear16",
-                source_language_code="es-ES",
-                target_language_code="en-US",
-                sample_rate_hertz=48000
-            )
+        speech_config = media.TranslateSpeechConfig(
+            audio_encoding="linear16",
+            source_language_code="es-ES",
+            target_language_code="en-US",
+            sample_rate_hertz=48000
+        )
 
-            config = media.StreamingTranslateSpeechConfig(
-                audio_config=speech_config,
-                single_utterance=True
-            )
+        config = media.StreamingTranslateSpeechConfig(
+            audio_config=speech_config
+        )
 
-            # The first request contains the configuration.
-            # Note that audio_content is explicitly set to None.
-            first_request = media.StreamingTranslateSpeechRequest(streaming_config=config)
-            print("Creted first request")
+        # The first request contains the configuration.
+        # Note that audio_content is explicitly set to None.
+        first_request = media.StreamingTranslateSpeechRequest(streaming_config=config)
+        print("Creted first request")
 
-            requests = itertools.chain(iter([first_request]), audio_generator(in_queue))
-            print("Created requests iterator")
+        requests = itertools.chain(iter([first_request]), audio_generator(in_queue))
+        print("Created requests iterator")
 
-            responses = client.streaming_translate_speech(requests)
-            print("Created responses from request")
+        responses = client.streaming_translate_speech(requests)
+        print("Created responses from request")
 
-            # Use the translation responses as they arrive
-            # out_queue.put(response for response in responses)
-            # asyncio.run(send_translation(responses))
-            translation = ""
-            for response in responses:
-                # If time between responses exceeds 1 s, finalize current translation
-                if response.speech_event_type == SpeechEventType.END_OF_SINGLE_UTTERANCE:
-                    last_index = len(translation)
-                    print(f"\nFinal translation: {translation}")
+        # Use the translation responses as they arrive
+        # out_queue.put(response for response in responses)
+        # asyncio.run(send_translation(responses))
+        translation = ""
+        last_index = 0
+        for response in responses:
+            result = response.result
+            translation = result.text_translation_result.translation
+            # If time between responses exceeds 1 s, finalize current translation
+            if result.text_translation_result.is_final:
+                # last_index = len(translation)
+                print(f"\nShould be Final translation: {translation}")
 
-                    azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
+                azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
 
-                    azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
-                                     "Content-type": "application/ssml+xml",
-                                     "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+                azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
+                                 "Content-type": "application/ssml+xml",
+                                 "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
 
-                    azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'> {translation} </voice></speak>"""
+                azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'> {translation} </voice></speak>"""
 
-                    response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
-                    print(len(response_azure.content), " TESTING ")
-                    print(response_azure)
-                    audio = response_azure.content
-                    out_queue.put(audio)
-                    print(f"Finished translation worker")
-                    break
-                else:
-                    result = response.result
-                    translation = result.text_translation_result.translation
-                    print(f"\nPartial translation: {translation}")
-        except Exception as e:
-            print("Error in Media Translation API:", e)
+                response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+                print(len(response_azure.content), " TESTING ")
+                print(response_azure)
+                audio = response_azure.content
+                out_queue.put(audio)
+            else:
+                print(f"\nPartial translation: {translation}")
+        print(f"Finished translation worker")
+    except Exception as e:
+        print("Error in Media Translation API:", e)
 
 
 @app.websocket("/")
