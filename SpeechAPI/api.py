@@ -12,6 +12,7 @@ from fastapi import FastAPI, WebSocket
 from google.cloud import mediatranslation as media
 from google.cloud.mediatranslation_v1beta1 import StreamingTranslateSpeechResponse
 from typing import Iterable, Callable, List
+from timeit import default_timer as timer
 
 load_dotenv()
 
@@ -61,12 +62,17 @@ def translation_worker(in_queue: Queue, out_queue: Queue):
         # Use the translation responses as they arrive
         # out_queue.put(response for response in responses)
         # asyncio.run(send_translation(responses))
+        translation = ""
+        start = timer()
+        last_index = 0
         for response in responses:
             result = response.result
-            translation = result.text_translation_result.translation
-
-            if result.text_translation_result.is_final:
-                print(f"\nFinal translation: {translation}")
+            translation = result.text_translation_result.translation[last_index:]
+            end = timer()
+            # If time between responses exceeds 1 s, finalize current translation
+            if end - start > 1 and translation is not None and len(translation) > 0:
+                last_index = len(translation)
+                print(f"\nShould be Final translation: {translation}")
 
                 azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
 
@@ -83,6 +89,7 @@ def translation_worker(in_queue: Queue, out_queue: Queue):
                 out_queue.put(audio)
             else:
                 print(f"\nPartial translation: {translation}")
+                start = timer()
         print(f"Finished translation worker")
 
     except Exception as e:
