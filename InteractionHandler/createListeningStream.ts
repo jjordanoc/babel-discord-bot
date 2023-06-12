@@ -3,21 +3,64 @@ import type { User } from 'discord.js';
 import * as prism from 'prism-media';
 import { WebSocket } from 'ws';
 import * as stream from 'stream';
+import NanoTimer from 'nanotimer';
+const SILENCE = Buffer.from([0xf8, 0xff, 0xfe]);
 
-export function createListeningStream(connection: VoiceConnection, userId: string, user?: User) {
-	const receiver = connection.receiver;
+export function createListeningStream(connection: VoiceConnection, userId: string) {
 	const player = createAudioPlayer();
 	player.on('error', error => {
 		console.error(error.message);
 	});
 	connection.subscribe(player);
 	console.log('Reached 1');
-	const opusStream = receiver.subscribe(userId, {
+	const opusStream = connection.receiver.subscribe(userId, {
 		end: {
 			behavior: EndBehaviorType.Manual,
 		},
 	});
-	const decoder = opusStream
+
+	// Accumulates very, very slowly, but only when user is speaking: reduces buffer size otherwise
+	const buffer = [];
+	const recording = true;
+	// Interpolating silence into user audio stream
+	const userStream = new stream.Readable({
+		read() {
+			if (recording) {
+				// Pushing audio at the same rate of the receiver
+				// (Could probably be replaced with standard, less precise timer)
+				const delay = new NanoTimer();
+				delay.setTimeout(() => {
+					if (buffer.length > 0) {
+						this.push(buffer.shift());
+					}
+					else {
+						this.push(SILENCE);
+					}
+					// delay.clearTimeout();
+				}, '', '20m');
+				// A 20.833ms period makes for a 48kHz frequency
+			}
+			else if (buffer.length > 0) {
+				// Sending buffered audio ASAP
+				this.push(buffer.shift());
+			}
+			else {
+				// Ending stream
+				this.push(null);
+			}
+		},
+	});
+	opusStream.on('data', chunk => buffer.push(chunk));
+	opusStream.on('end', () => {
+		// TODO: perform cleanup
+		console.log('Ended user audio stream');
+		audioSocket.close();
+	});
+	opusStream.on('close', () => {
+		console.log('Closed user audio stream');
+		audioSocket.close();
+	});
+	const decoder = userStream
 		.pipe(new prism.opus.Decoder({
 			rate: 48000,
 			channels: 1,

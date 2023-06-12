@@ -50,7 +50,7 @@ async function joinHandler(interaction) {
 		const receiver = connection.receiver;
 		receiver.speaking.once('start', (callerUserId) => {
 			console.log('User started speaking. Called event once.');
-			createListeningStream(connection, interaction.user.id, interaction.client.users.cache.get(interaction.user.id));
+			createListeningStream(connection, interaction.user.id);
 		});
 		interaction.reply({ ephemeral: true, content: 'Listening...' });
 	}
@@ -66,14 +66,17 @@ async function leaveHandler(interaction) {
 	const connection = getVoiceConnection(guildId);
 	if (connection) {
 		try {
-			const receiver = connection.receiver;
 			// Should be changed (should only destroy connections created by the current user)
-			receiver.subscriptions.forEach((subscription) => {
-				subscription.destroy();
-			});
-			connection.disconnect();
-			console.info('Successfully disconnected from voice channel.');
-			interaction.reply({ ephemeral: true, content: 'Successfully disconnected from voice channel.' });
+			const success = connection.receiver.subscriptions.delete(interaction.user.id);
+			if (success) {
+				connection.disconnect();
+				console.info('Successfully disconnected from voice channel.');
+				interaction.reply({ ephemeral: true, content: 'Successfully disconnected from voice channel.' });
+			}
+			else {
+				console.info('Could not disconnect from voice channel, please call the leave method correctly.');
+				interaction.reply({ ephemeral: true, content: 'Could not disconnect from voice channel, please call the leave method correctly.' });
+			}
 		}
 		catch (error) {
 			console.error(error);
