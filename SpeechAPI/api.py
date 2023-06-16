@@ -1,144 +1,101 @@
-import itertools
-import multiprocessing
 import asyncio
 import os
-import websockets
-from multiprocessing import set_start_method
-from multiprocessing.queues import Queue
+
 import requests as req
 import uvicorn
+from deepgram import Deepgram
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
-from google.cloud import mediatranslation as media
-from google.cloud.mediatranslation_v1beta1 import StreamingTranslateSpeechResponse
-from typing import Iterable, Callable, List
-from timeit import default_timer as timer
+from google.cloud import translate
 
 load_dotenv()
 
-# Audio recording parameters
-SpeechEventType = media.StreamingTranslateSpeechResponse.SpeechEventType
-
 app = FastAPI()
 
+# The API key you created in step 1
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 
-def audio_generator(q: Queue):
-    while True:
-        data_bytes: bytes = q.get()
-        yield media.StreamingTranslateSpeechRequest(audio_content=data_bytes)
+# Initializes the Deepgram SDK
+deepgram = Deepgram(DEEPGRAM_API_KEY)
 
-
-def translation_worker(in_queue: Queue, out_queue: Queue):
-    print("Started worker")
-    # while True:
-    #     print("Restarted worker")
-    while True:
-        try:
-            print("Began speaking...")
-            client = media.SpeechTranslationServiceClient()
-            print("Created client")
-
-            speech_config = media.TranslateSpeechConfig(
-                audio_encoding="linear16",
-                source_language_code="es-ES",
-                target_language_code="en-US",
-                sample_rate_hertz=48000
-            )
-
-            config = media.StreamingTranslateSpeechConfig(
-                audio_config=speech_config
-            )
-            print("Created config")
-
-            # The first request contains the configuration.
-            # Note that audio_content is explicitly set to None.
-            first_request = media.StreamingTranslateSpeechRequest(streaming_config=config)
-            print("Creted first request")
-
-            requests = itertools.chain(iter([first_request]), audio_generator(in_queue))
-            print("Created requests iterator")
-
-            responses = client.streaming_translate_speech(requests)
-            print("Created responses from request")
-
-            # Use the translation responses as they arrive
-            for response in responses:
-                result = response.result
-                translation = result.text_translation_result.translation
-                # If time between responses exceeds 1 s, finalize current translation
-                if result.text_translation_result.is_final:
-                    # last_index = len(translation)
-                    print(f"\nShould be Final translation: {translation}\nUTF-8:{translation.encode('utf-8')}")
-
-                    azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
-
-                    azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
-                                     "Content-type": "application/ssml+xml",
-                                     "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
-
-                    azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'>{translation}</voice></speak>"""
-
-                    response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
-                    audio = response_azure.content
-                    out_queue.put(audio)
-                else:
-                    print(f"\nPartial translation: {translation}")
-            print(f"Finished translation worker")
-        except Exception as e:
-            print("Error in Media Translation API:", e)
+PROJECT_ID = os.getenv("PROJECT_ID")
+translate_client = translate.TranslationServiceClient()
+location = "global"
+parent = f"projects/{PROJECT_ID}/locations/{location}"
 
 
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     await websocket.accept()
+    # Create a websocket connection to Deepgram
+    try:
+        deepgramLive = await deepgram.transcription.live(
+            {"punctuate": True, "model": "nova", "language": "es", "encoding": "linear16", "sample_rate": 48000,
+             "channels": 1}
+        )
+    except Exception as e:
+        print(f'Could not open socket: {e}')
+        await websocket.close(code=500)
+        return
     print('websocket.accept')
-    ctx = multiprocessing.get_context()
-    in_queue = ctx.Queue()
-    out_queue = ctx.Queue()
-    process = ctx.Process(target=translation_worker, args=(in_queue, out_queue))
-    process.start()
+
+    # Listen for the connection to close
+    deepgramLive.registerHandler(deepgramLive.event.CLOSE, lambda _: print('Connection closed.'))
+
+    # Listen for any transcripts received from Deepgram and write them to the console (translate them)
+    async def translate_and_send_audio_chunk(result):
+        print(result)
+        if result["is_final"]:
+            transcription = result["channel"]["alternatives"][0]["transcript"]
+            if transcription == "":
+                print("Empty transcription")
+                return
+            response = translate_client.translate_text(
+                request={
+                    "parent": parent,
+                    "contents": [transcription],
+                    "mime_type": "text/plain",
+                    "source_language_code": "es",
+                    "target_language_code": "en-US",
+                }
+            )
+            if response.translations:
+                translation = response.translations[0].translated_text
+            else:
+                print(f"Error in translation {response}")
+                return
+            azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
+
+            azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
+                             "Content-type": "application/ssml+xml",
+                             "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+
+            azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'>{translation}</voice></speak>"""
+
+            response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+            audio = response_azure.content
+
+            await websocket.send_bytes(audio)
+
+    deepgramLive.registerHandler(deepgramLive.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
 
     async def receive_audio():
         while True:
             # RECEIVE
             audio_bytes: bytes = await websocket.receive_bytes()
-            in_queue.put(audio_bytes)
-
-    async def send_audio():
-        while True:
-            # SEND
-            # Check if there's audio to send
-            while not out_queue.empty():
-                audio = out_queue.get()
-                await websocket.send_bytes(audio)
-            await asyncio.sleep(0.1)  # Prevent tight loop when there's nothing to send
+            deepgramLive.send(audio_bytes)
 
     receive_task = asyncio.create_task(receive_audio())
-    send_task = asyncio.create_task(send_audio())
 
     try:
-        await asyncio.gather(receive_task, send_task)
+        await asyncio.gather(receive_task)
     except Exception as e:
         print("Error in socket:", e)
     finally:
-        # Wait for the worker to finish
-        in_queue.close()
-        in_queue.join_thread()
-        out_queue.close()
-        out_queue.join_thread()
-        # use terminate so the while True loop in process will exit
-        process.terminate()
-        process.join()
+        await deepgramLive.finish()
 
     print('leave websocket_endpoint')
 
 
 if __name__ == '__main__':
-    # When using spawn you should guard the part that launches the job in if __name__ == '__main__':.
-    # `set_start_method` should also go there, and everything will run fine.
-    try:
-        set_start_method('spawn')
-    except RuntimeError as e:
-        print("Runtime error:", e)
-
     uvicorn.run('api:app', host='0.0.0.0')
