@@ -27,6 +27,9 @@ parent = f"projects/{PROJECT_ID}/locations/{location}"
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     await websocket.accept()
+    # Receive the source language and the target language
+    languages = await websocket.receive_json()
+
     # Create a websocket connection to Deepgram
     try:
         deepgramLive = await deepgram.transcription.live(
@@ -43,7 +46,7 @@ async def audio_socket(websocket: WebSocket):
     deepgramLive.registerHandler(deepgramLive.event.CLOSE, lambda _: print('Connection closed.'))
 
     # Listen for any transcripts received from Deepgram and write them to the console (translate them)
-    async def translate_and_send_audio_chunk(result):
+    async def translate_and_send_audio_chunk(result, src_lang: str, trg_lang: str):
         print(result)
         if result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
@@ -55,8 +58,8 @@ async def audio_socket(websocket: WebSocket):
                     "parent": parent,
                     "contents": [transcription],
                     "mime_type": "text/plain",
-                    "source_language_code": "es",
-                    "target_language_code": "en-US",
+                    "source_language_code": src_lang,
+                    "target_language_code": trg_lang,
                 }
             )
             if response.translations:
@@ -76,8 +79,11 @@ async def audio_socket(websocket: WebSocket):
             audio = response_azure.content
 
             await websocket.send_bytes(audio)
-
-    deepgramLive.registerHandler(deepgramLive.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
+    print(languages)
+    print(languages["source"])
+    print(languages["target"])
+    deepgramLive.registerHandler(deepgramLive.event.TRANSCRIPT_RECEIVED, languages["source"], languages["target"],
+                                 translate_and_send_audio_chunk)
 
     async def receive_audio():
         while True:

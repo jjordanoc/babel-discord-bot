@@ -14,11 +14,15 @@ const commandList = [
 		'name': 'join',
 		'description': 'Joins the voice channel of the calling user.',
 		'handler': joinHandler,
+		'options_handler1': joinSourceLanguageHandler,
+		'options_handler2': joinTargetLanguageHandler,
 	},
 	{
 		'name': 'leave',
 		'description': 'Leaves the voice channel of the calling user.',
 		'handler': leaveHandler,
+		'options_handler1': joinSourceLanguageHandler,
+		'options_handler2': joinTargetLanguageHandler,
 	},
 ];
 
@@ -27,7 +31,28 @@ const commands = new SlashCommandRegistry();
 for (let i = 0; i < commandList.length; ++i) {
 	commands.addCommand(command => command.setName(commandList[i].name)
 		.setDescription(commandList[i].description)
-		.setHandler(commandList[i].handler));
+		.setHandler(commandList[i].handler)
+		.addStringOption(commandList[i].options_handler1)
+		.addStringOption(commandList[i].options_handler2));
+}
+
+
+function joinSourceLanguageHandler(option) {
+	option.setName('source').setDescription('What language do you speak?').setRequired(true).addChoices(
+		{ name: 'Spanish', value: 'es' },
+		{ name: 'English', value: 'en' },
+		{ name: 'French', value: 'fr' },
+		{ name: 'Italian', value: 'it' },
+	);
+}
+
+function joinTargetLanguageHandler(option) {
+	option.setName('target').setDescription('What language do you want to translate to?').setRequired(true).addChoices(
+		{ name: 'Spanish', value: 'es' },
+		{ name: 'English', value: 'en' },
+		{ name: 'French', value: 'fr' },
+		{ name: 'Italian', value: 'it' },
+	);
 }
 
 async function joinHandler(interaction) {
@@ -45,12 +70,18 @@ async function joinHandler(interaction) {
 		selfMute: true,
 	});
 
+	const languages = {
+		'source': interaction.source,
+		'target': interaction.target,
+	};
+	console.log(languages);
+
 	try {
 		await entersState(connection, VoiceConnectionStatus.Ready, 20e3);
 		const receiver = connection.receiver;
 		receiver.speaking.once('start', (callerUserId) => {
 			console.log('User started speaking. Called event once.');
-			createListeningStream(connection, interaction.user.id);
+			createListeningStream(connection, interaction.user.id, languages);
 		});
 		interaction.reply({ ephemeral: true, content: 'Listening...' });
 	}
