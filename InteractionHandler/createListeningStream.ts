@@ -2,6 +2,7 @@ import { createAudioPlayer, createAudioResource, EndBehaviorType, StreamType, Vo
 import * as prism from 'prism-media';
 import { WebSocket } from 'ws';
 import * as stream from 'stream';
+import * as JSON from 'json3'
 
 export function createListeningStream(connection: VoiceConnection, userId: string, languages: {'source': string, 'target': string}) {
 	const player = createAudioPlayer();
@@ -32,9 +33,8 @@ export function createListeningStream(connection: VoiceConnection, userId: strin
 		}));
 	const audioSocket = new WebSocket('ws://127.0.0.1:8000');
 	audioSocket.on('open', () => {
-		// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-		// @ts-ignore
-		audioSocket.send(languages);
+		console.log(JSON.stringify(languages))
+		audioSocket.send(JSON.stringify(languages));
 		decoder.on('data', (chunk) => {
 			audioSocket.send(chunk);
 		});
