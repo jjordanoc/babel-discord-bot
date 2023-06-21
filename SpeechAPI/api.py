@@ -37,7 +37,7 @@ async def audio_socket(websocket: WebSocket):
     # Create a websocket connection to Deepgram
     try:
         deepgramLive = await deepgram.transcription.live(
-            {"punctuate": True, "model": "nova", "language": src_lang, "encoding": "linear16", "sample_rate": 48000,
+            {"punctuate": True, "model": "enhanced", "language": src_lang, "encoding": "linear16", "sample_rate": 48000,
              "channels": 1}
         )
     except Exception as e:

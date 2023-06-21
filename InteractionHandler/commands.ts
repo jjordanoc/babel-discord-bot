@@ -44,25 +44,6 @@ commands.addCommand(command => {
 		.setHandler(leaveHandler);
 });
 
-
-function joinSourceLanguageHandler(option) {
-	return option.setName('source').setDescription('What language do you speak?').setRequired(true).addChoices(
-		{ name: 'Spanish', value: 'es' },
-		{ name: 'English', value: 'en' },
-		{ name: 'French', value: 'fr' },
-		{ name: 'Italian', value: 'it' },
-	);
-}
-
-function joinTargetLanguageHandler(option) {
-	return option.setName('target').setDescription('What language do you want to translate to?').setRequired(true).addChoices(
-		{ name: 'Spanish', value: 'es' },
-		{ name: 'English', value: 'en' },
-		{ name: 'French', value: 'fr' },
-		{ name: 'Italian', value: 'it' },
-	);
-}
-
 async function joinHandler(interaction) {
 	const guildId: string = interaction.guild.id;
 	const channel: VoiceChannel | null = interaction.member.voice.channel;
@@ -93,13 +74,15 @@ async function joinHandler(interaction) {
 			createListeningStream(connection, interaction.user.id, languages);
 		});
 		interaction.reply({ ephemeral: true, content: 'Listening...' });
-	} catch (error) {
+	}
+	catch (error) {
 		console.warn(error);
 		interaction.reply({
 			ephemeral: true,
 			content: 'Failed to join voice channel within 20 seconds, please try again later!',
 		});
 	}
+}
 
 
 async function leaveHandler(interaction) {
@@ -122,7 +105,8 @@ async function leaveHandler(interaction) {
 					content: 'Could not disconnect from voice channel, please call the leave method correctly.',
 				});
 			}
-		} catch (error) {
+		}
+		catch (error) {
 			console.error(error);
 			interaction.reply({
 				ephemeral: true,
@@ -132,7 +116,10 @@ async function leaveHandler(interaction) {
 	}
 	else {
 		console.warn('Currently in idle. Join a voice channel to use this command.');
-		interaction.reply({ ephemeral: true, content: 'Currently in idle. Join a voice channel to use this command.' });
+		interaction.reply({
+			ephemeral: true,
+			content: 'Currently in idle. Join a voice channel to use this command.',
+		});
 	}
 }
 
