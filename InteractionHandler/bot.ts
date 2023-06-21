@@ -3,11 +3,6 @@ import commands from './commands';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-
-/**
- * The IDs of the users that can be recorded by the bot.
- */
-
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages] });
 
 // When the client is ready, run this code (only once)
