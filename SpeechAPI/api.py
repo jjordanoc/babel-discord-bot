@@ -29,8 +29,10 @@ async def audio_socket(websocket: WebSocket):
     await websocket.accept()
     # Receive the source language and the target language
     languages = await websocket.receive_json()
+    print(languages)
     src_lang = languages["source"]
     trg_lang = languages["target"]
+    gender_lang = languages["gender"]
 
     # Create a websocket connection to Deepgram
     try:
@@ -75,8 +77,28 @@ async def audio_socket(websocket: WebSocket):
                              "Content-type": "application/ssml+xml",
                              "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
 
-            azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='Male' name='en-US-DavisNeural'>{translation}</voice></speak>"""
+            if trg_lang == "en":
+                if gender_lang == "Female":
+                    speaker = "en-US-JennyNeural"
+                elif gender_lang == "Male":
+                    speaker = "en-US-BrandonNeural"
+            elif trg_lang == "es":
+                if gender_lang == "Female":
+                    speaker = "es-PE-CamilaNeural"
+                elif gender_lang == "Male":
+                    speaker = "es-PE-AlexNeural"
+            elif trg_lang == "fr":
+                if gender_lang == "Female":
+                    speaker = "fr-FR-DeniseNeural"
+                elif gender_lang == "Male":
+                    speaker = "fr-FR-HenriNeural"
+            elif trg_lang == "it":
+                if gender_lang == "Female":
+                    speaker = "it-IT-ElsaNeural"
+                elif gender_lang == "Male":
+                    speaker = "it-IT-DiegoNeural"
 
+            azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
             response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
             audio = response_azure.content
 
