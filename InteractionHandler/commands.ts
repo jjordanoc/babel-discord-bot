@@ -83,6 +83,7 @@ async function joinHandler(interaction) {
 		'target': interaction.options.getString('target'),
 		'gender': interaction.options.getString('gender'),
 	};
+	console.log(languages);
 
 	try {
 		await entersState(connection, VoiceConnectionStatus.Ready, 20e3);
@@ -99,7 +100,7 @@ async function joinHandler(interaction) {
 			content: 'Failed to join voice channel within 20 seconds, please try again later!',
 		});
 	}
-}
+
 
 async function leaveHandler(interaction) {
 	const guildId: string = interaction.guild.id;
