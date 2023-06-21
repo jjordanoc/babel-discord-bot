@@ -28,6 +28,12 @@ commands.addCommand(command => {
 				{ name: 'French', value: 'fr' },
 				{ name: 'Italian', value: 'it' },
 			);
+		})
+		.addStringOption((option) => {
+			return option.setName('gender').setDescription('Which gender would be your speaker?').setRequired(true).addChoices(
+				{ name: 'Male', value: 'Male' },
+				{ name: 'Female', value: 'Female' },
+			);
 		});
 });
 
@@ -75,6 +81,7 @@ async function joinHandler(interaction) {
 	const languages = {
 		'source': interaction.options.getString('source'),
 		'target': interaction.options.getString('target'),
+		'gender': interaction.options.getString('gender'),
 	};
 	console.log(languages);
 
@@ -86,15 +93,14 @@ async function joinHandler(interaction) {
 			createListeningStream(connection, interaction.user.id, languages);
 		});
 		interaction.reply({ ephemeral: true, content: 'Listening...' });
-	}
-	catch (error) {
+	} catch (error) {
 		console.warn(error);
 		interaction.reply({
 			ephemeral: true,
 			content: 'Failed to join voice channel within 20 seconds, please try again later!',
 		});
 	}
-}
+
 
 async function leaveHandler(interaction) {
 	const guildId: string = interaction.guild.id;
@@ -116,8 +122,7 @@ async function leaveHandler(interaction) {
 					content: 'Could not disconnect from voice channel, please call the leave method correctly.',
 				});
 			}
-		}
-		catch (error) {
+		} catch (error) {
 			console.error(error);
 			interaction.reply({
 				ephemeral: true,

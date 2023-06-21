@@ -14,7 +14,8 @@ import * as JSON from 'json3';
 
 export function createListeningStream(connection: VoiceConnection, userId: string, languages: {
 	'source': string,
-	'target': string
+	'target': string,
+	'gender': string
 }) {
 	/*
 	Send user audio through socket
@@ -39,7 +40,6 @@ export function createListeningStream(connection: VoiceConnection, userId: strin
 		}));
 	const audioSocket = new WebSocket('ws://127.0.0.1:8000');
 	audioSocket.on('open', () => {
-		console.log(JSON.stringify(languages));
 		audioSocket.send(JSON.stringify(languages));
 		decoder.on('data', (chunk) => {
 			audioSocket.send(chunk);
