@@ -1,6 +1,6 @@
 import asyncio
 import os
-
+import openai
 import requests as req
 import uvicorn
 from deepgram import Deepgram
@@ -22,6 +22,19 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 translate_client = translate.TranslationServiceClient()
 location = "global"
 parent = f"projects/{PROJECT_ID}/locations/{location}"
+
+openai.api_key = os.getenv("GPT_KEY")
+
+
+def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
+    messages = [{"role": "system", "content": "Responde lo siguiente en 50 palabras o menos:"},
+                {"role": "user", "content": prompt}]
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        temperature=0,
+    )
+    return response.choices[0].message["content"]
 
 
 @app.websocket("/")
@@ -51,9 +64,15 @@ async def audio_socket(websocket: WebSocket):
 
     # Listen for any transcripts received from Deepgram and write them to the console (translate them)
     async def translate_and_send_audio_chunk(result):
+        gpt_call_flag = False
         print(result)
         if result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
+            print("BEFORE TRANSLATION: " + transcription)
+            if transcription[0:5] == "Babel":
+                print("CALLED GPT")
+                print(gpt3_request(transcription[6:]))
+                gpt_call_flag = True
             if transcription == "":
                 print("Empty transcription")
                 return
@@ -71,32 +90,59 @@ async def audio_socket(websocket: WebSocket):
             else:
                 print(f"Error in translation {response}")
                 return
+
+            if gpt_call_flag:
+                translation = gpt3_request(transcription[6:])
+
             azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
 
             azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
                              "Content-type": "application/ssml+xml",
                              "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
 
-            if trg_lang == "en":
-                if gender_lang == "Female":
-                    speaker = "en-US-JennyNeural"
-                elif gender_lang == "Male":
-                    speaker = "en-US-BrandonNeural"
-            elif trg_lang == "es":
-                if gender_lang == "Female":
-                    speaker = "es-PE-CamilaNeural"
-                elif gender_lang == "Male":
-                    speaker = "es-PE-AlexNeural"
-            elif trg_lang == "fr":
-                if gender_lang == "Female":
-                    speaker = "fr-FR-DeniseNeural"
-                elif gender_lang == "Male":
-                    speaker = "fr-FR-HenriNeural"
-            elif trg_lang == "it":
-                if gender_lang == "Female":
-                    speaker = "it-IT-ElsaNeural"
-                elif gender_lang == "Male":
-                    speaker = "it-IT-DiegoNeural"
+            if gpt_call_flag:
+                if src_lang == "en":
+                    if gender_lang == "Female":
+                        speaker = "en-US-JennyNeural"
+                    elif gender_lang == "Male":
+                        speaker = "en-US-BrandonNeural"
+                elif src_lang == "es":
+                    if gender_lang == "Female":
+                        speaker = "es-PE-CamilaNeural"
+                    elif gender_lang == "Male":
+                        speaker = "es-PE-AlexNeural"
+                elif src_lang == "fr":
+                    if gender_lang == "Female":
+                        speaker = "fr-FR-DeniseNeural"
+                    elif gender_lang == "Male":
+                        speaker = "fr-FR-HenriNeural"
+                elif src_lang == "it":
+                    if gender_lang == "Female":
+                        speaker = "it-IT-ElsaNeural"
+                    elif gender_lang == "Male":
+                        speaker = "it-IT-DiegoNeural"
+
+            else:
+                if trg_lang == "en":
+                    if gender_lang == "Female":
+                        speaker = "en-US-JennyNeural"
+                    elif gender_lang == "Male":
+                        speaker = "en-US-BrandonNeural"
+                elif trg_lang == "es":
+                    if gender_lang == "Female":
+                        speaker = "es-PE-CamilaNeural"
+                    elif gender_lang == "Male":
+                        speaker = "es-PE-AlexNeural"
+                elif trg_lang == "fr":
+                    if gender_lang == "Female":
+                        speaker = "fr-FR-DeniseNeural"
+                    elif gender_lang == "Male":
+                        speaker = "fr-FR-HenriNeural"
+                elif trg_lang == "it":
+                    if gender_lang == "Female":
+                        speaker = "it-IT-ElsaNeural"
+                    elif gender_lang == "Male":
+                        speaker = "it-IT-DiegoNeural"
 
             azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
             response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
@@ -104,7 +150,7 @@ async def audio_socket(websocket: WebSocket):
 
             await websocket.send_bytes(audio)
 
-    deepgramLive.registerHandler(deepgramLive.event.TRANSCRIPT_RECEIVED,translate_and_send_audio_chunk)
+    deepgramLive.registerHandler(deepgramLive.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
 
     async def receive_audio():
         while True:
