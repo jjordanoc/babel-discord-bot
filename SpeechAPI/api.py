@@ -1,5 +1,6 @@
 import asyncio
 import os
+
 import openai
 import requests as req
 import uvicorn
@@ -49,7 +50,7 @@ async def audio_socket(websocket: WebSocket):
 
     # Create a websocket connection to Deepgram
     try:
-        deepgramLive = await deepgram.transcription.live(
+        deepgram_live = await deepgram.transcription.live(
             {"punctuate": True, "model": "enhanced", "language": src_lang, "encoding": "linear16", "sample_rate": 48000,
              "channels": 1}
         )
@@ -60,13 +61,13 @@ async def audio_socket(websocket: WebSocket):
     print('websocket.accept')
 
     # Listen for the connection to close
-    deepgramLive.registerHandler(deepgramLive.event.CLOSE, lambda _: print('Connection closed.'))
+    deepgram_live.registerHandler(deepgram_live.event.CLOSE, lambda _: print('Connection closed.'))
 
     # Listen for any transcripts received from Deepgram and write them to the console (translate them)
     async def translate_and_send_audio_chunk(result):
         gpt_call_flag = False
         print(result)
-        if result["is_final"]:
+        if "is_final" in result and result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
             print("BEFORE TRANSLATION: " + transcription)
             if transcription[0:5] == "Babel":
@@ -126,7 +127,6 @@ async def audio_socket(websocket: WebSocket):
                         speaker = "de-DE-AmalaNeural"
                     elif gender_lang == "Male":
                         speaker = "de-DE-KasperNeural"
-
             else:
                 if trg_lang == "en":
                     if gender_lang == "Female":
@@ -154,19 +154,21 @@ async def audio_socket(websocket: WebSocket):
                     elif gender_lang == "Male":
                         speaker = "de-DE-KasperNeural"
 
-            azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
+            # Fix unrecognizeable characters
+            translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
+            azure_body = f"""<speak version='1.0' xml:lang='es-ES'><voice xml:lang='es-ES' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
             response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
             audio = response_azure.content
 
             await websocket.send_bytes(audio)
 
-    deepgramLive.registerHandler(deepgramLive.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
+    deepgram_live.registerHandler(deepgram_live.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
 
     async def receive_audio():
         while True:
             # RECEIVE
             audio_bytes: bytes = await websocket.receive_bytes()
-            deepgramLive.send(audio_bytes)
+            deepgram_live.send(audio_bytes)
 
     receive_task = asyncio.create_task(receive_audio())
 
@@ -175,7 +177,7 @@ async def audio_socket(websocket: WebSocket):
     except Exception as e:
         print("Error in socket:", e)
     finally:
-        await deepgramLive.finish()
+        await deepgram_live.finish()
 
     print('leave websocket_endpoint')
 
