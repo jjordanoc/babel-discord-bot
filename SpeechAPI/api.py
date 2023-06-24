@@ -121,6 +121,11 @@ async def audio_socket(websocket: WebSocket):
                         speaker = "it-IT-ElsaNeural"
                     elif gender_lang == "Male":
                         speaker = "it-IT-DiegoNeural"
+                elif trg_lang == "de":
+                    if gender_lang == "Female":
+                        speaker = "de-DE-AmalaNeural"
+                    elif gender_lang == "Male":
+                        speaker = "de-DE-KasperNeural"
 
             else:
                 if trg_lang == "en":
@@ -143,6 +148,11 @@ async def audio_socket(websocket: WebSocket):
                         speaker = "it-IT-ElsaNeural"
                     elif gender_lang == "Male":
                         speaker = "it-IT-DiegoNeural"
+                elif trg_lang == "de":
+                    if gender_lang == "Female":
+                        speaker = "de-DE-AmalaNeural"
+                    elif gender_lang == "Male":
+                        speaker = "de-DE-KasperNeural"
 
             azure_body = f"""<speak version='1.0' xml:lang='en-US'><voice xml:lang='en-US' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
             response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)

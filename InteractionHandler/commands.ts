@@ -19,6 +19,7 @@ commands.addCommand(command => {
 				{ name: 'English', value: 'en' },
 				{ name: 'French', value: 'fr' },
 				{ name: 'Italian', value: 'it' },
+				{ name: 'German', value: 'de' },
 			);
 		})
 		.addStringOption((option) => {
@@ -27,6 +28,7 @@ commands.addCommand(command => {
 				{ name: 'English', value: 'en' },
 				{ name: 'French', value: 'fr' },
 				{ name: 'Italian', value: 'it' },
+				{ name: 'German', value: 'de' },
 			);
 		})
 		.addStringOption((option) => {
