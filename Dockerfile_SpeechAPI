@@ -1,15 +1,18 @@
 # pull official base image
-FROM 3.11.4-bullseye
+FROM python:3.11
 
 # set working directory
-WORKDIR /api
+WORKDIR /app
 
 # install app dependencies
-COPY ./SpeechAPI/requirements.txt ./
-RUN pip3 install -r requirements.txt
+COPY SpeechAPI/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # add app
-COPY ./SpeechAPI/ ./
+COPY SpeechAPI .
 
-# start app
+# expose api running port
+EXPOSE 8000
+
+# run api
 CMD ["python3", "api.py"]
