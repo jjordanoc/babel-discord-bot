@@ -29,7 +29,7 @@ jobs:
       - name: Deploy in EC2 SpeechAPI
         env:
             PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY  }}
-            HOSTNAME : ${{ secrets.HOSTNAME_API  }}
+            HOSTNAME_API : ${{ secrets.HOSTNAME_API  }}
             USER_NAME : ${{ secrets.USER_NAME  }}
             
         run: |
