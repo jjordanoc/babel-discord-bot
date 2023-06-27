@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - deployment
 
 jobs:
 # First we will see the application build or not , then we will deploy in EC2
@@ -33,13 +32,18 @@ jobs:
             USER_NAME : ${{ secrets.USER_NAME  }}
             
         run: |
-          sudo apt-get install -y libssl-dev
-          sudo echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-          sudo ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_API} '
-            #Now we have got the access of EC2 and we will start the deploy .
+          echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+          ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_API}
+          
+          '
+            # Now we have got the access of EC2 and we will start the deploy
             cd /home/ubuntu/ajedrezpown &&
             git checkout deployment &&
-            git fetch --all &&
-            git reset --hard origin/deployment &&
-            git pull origin deployment
+            git fetch --all && git reset --hard origin/deployment &&
+            git pull origin deployment &&
+            
+            # Run SpeechAPI
+            sudo docker container prune -f  # delete containers
+            sudo docker rmi -f $(sudo docker images -aq)  # delete images
+            sudo docker compose up -d
           '
