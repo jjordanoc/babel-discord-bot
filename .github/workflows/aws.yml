@@ -2,8 +2,7 @@ name: CI/CD ajedrezpown
 
 on:
   push:
-    branches:
-      - '*'
+    branches: [ main ]
 
 jobs:
   deploy_api:
@@ -22,9 +21,9 @@ jobs:
           sudo ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_API} '
             # Now we have got the access of EC2 and we will start the deploy
             cd /home/ubuntu/ajedrezpown/ &&
-            git checkout deployment &&
-            git fetch --all && git reset --hard origin/deployment &&
-            git pull origin deployment &&
+            git checkout main &&
+            git fetch --all && git reset --hard origin/main &&
+            git pull origin main &&
             
             # Run SpeechAPI
             sudo docker compose up -d
