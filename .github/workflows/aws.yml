@@ -3,24 +3,10 @@ name: CI/CD ajedrezpown
 on:
   push:
     branches:
-      - main
+      - '*'
 
 jobs:
-# First we will see the application build or not , then we will deploy in EC2
-#   build:
-#     runs-on: ubuntu-latest
-    
-#     steps:
-#     - uses: actions/checkout@v2
-    
-#     - name: Build the docker_compose
-#       run: sudo docker-compose up -d --build
-      
-#     - name: Buid the application
-#       run: sudo docker-compose exec -T counter_app npm run build
-
   deploy_api:
-#     needs: build
     runs-on: ubuntu-latest
     
     steps:
@@ -32,18 +18,14 @@ jobs:
             USER_NAME : ${{ secrets.USER_NAME  }}
             
         run: |
-          echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-          ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_API}
-          
-          '
+          sudo echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+          sudo ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_API} '
             # Now we have got the access of EC2 and we will start the deploy
-            cd /home/ubuntu/ajedrezpown &&
+            cd /home/ubuntu/ajedrezpown/ &&
             git checkout deployment &&
             git fetch --all && git reset --hard origin/deployment &&
             git pull origin deployment &&
             
             # Run SpeechAPI
-            sudo docker container prune -f  # delete containers
-            sudo docker rmi -f $(sudo docker images -aq)  # delete images
             sudo docker compose up -d
           '
