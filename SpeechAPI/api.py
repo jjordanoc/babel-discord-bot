@@ -38,6 +38,9 @@ def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
     return response.choices[0].message["content"]
 
 
+main_gpt_flag = False
+
+
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     await websocket.accept()
@@ -65,18 +68,28 @@ async def audio_socket(websocket: WebSocket):
 
     # Listen for any transcripts received from Deepgram and write them to the console (translate them)
     async def translate_and_send_audio_chunk(result):
-        gpt_call_flag = False
+        global main_gpt_flag
+        print("MAIN_GPT_FLAG 1 = " + str(main_gpt_flag))
         print(result)
         if "is_final" in result and result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
-            print("BEFORE TRANSLATION: " + transcription)
+
+            # Checks if 'Babel' was said and turns the gpt_flag true.
+            # Also plays a sound indicating a call to GPT was requested
             if transcription[0:5] == "Babel":
-                print("CALLED GPT")
-                print(gpt3_request(transcription[6:]))
-                gpt_call_flag = True
+                main_gpt_flag = True
+                print("MAIN_GPT_FLAG 2 = " + str(main_gpt_flag))
+
+                with open('noti-sound.opus', 'rb') as f:
+                    data = f.read()
+                    await websocket.send_bytes(data)
+
+                return
+
             if transcription == "":
                 print("Empty transcription")
                 return
+
             response = translate_client.translate_text(
                 request={
                     "parent": parent,
@@ -86,14 +99,15 @@ async def audio_socket(websocket: WebSocket):
                     "target_language_code": trg_lang,
                 }
             )
+
             if response.translations:
                 translation = response.translations[0].translated_text
             else:
                 print(f"Error in translation {response}")
                 return
 
-            if gpt_call_flag:
-                translation = gpt3_request(transcription[6:])
+            if main_gpt_flag:
+                translation = gpt3_request(transcription)
 
             azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
 
@@ -101,7 +115,7 @@ async def audio_socket(websocket: WebSocket):
                              "Content-type": "application/ssml+xml",
                              "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
 
-            if gpt_call_flag:
+            if main_gpt_flag:
                 if src_lang == "en":
                     if gender_lang == "Female":
                         speaker = "en-US-JennyNeural"
@@ -159,6 +173,7 @@ async def audio_socket(websocket: WebSocket):
             azure_body = f"""<speak version='1.0' xml:lang='es-ES'><voice xml:lang='es-ES' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
             response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
             audio = response_azure.content
+            main_gpt_flag = False
 
             await websocket.send_bytes(audio)
 
