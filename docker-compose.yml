@@ -1,0 +1,9 @@
+version: '3'
+
+services:
+  speechapi:
+    build: ./SpeechAPI
+    volumes:
+      - './SpeechAPI:/app'
+    ports:
+      - '8000:8000'
