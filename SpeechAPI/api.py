@@ -28,14 +28,23 @@ openai.api_key = os.getenv("GPT_KEY")
 
 
 def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
-    messages = [{"role": "system", "content": "Responde lo siguiente en 50 palabras o menos:"},
-                {"role": "user", "content": prompt}]
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=messages,
-        temperature=0,
-    )
-    return response.choices[0].message["content"]
+    messages = [
+        # {"role": "system", "content": "Responde lo siguiente en 50 palabras o menos:"},
+        {"role": "user", "content": prompt}
+    ]
+
+    current_sentence = ''
+    for chunk in openai.ChatCompletion.create(
+            model=model,
+            messages=messages,
+            stream=True,
+    ):
+        content = chunk["choices"][0].get("delta", {}).get("content")
+        if content is not None:
+            current_sentence += content
+            if content.endswith('.'):
+                yield current_sentence
+                current_sentence = ''
 
 
 main_gpt_flag = False
@@ -106,9 +115,6 @@ async def audio_socket(websocket: WebSocket):
                 print(f"Error in translation {response}")
                 return
 
-            if main_gpt_flag:
-                translation = gpt3_request(transcription)
-
             azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
 
             azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
@@ -168,14 +174,26 @@ async def audio_socket(websocket: WebSocket):
                     elif gender_lang == "Male":
                         speaker = "de-DE-KasperNeural"
 
-            # Fix unrecognizeable characters
-            translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
-            azure_body = f"""<speak version='1.0' xml:lang='es-ES'><voice xml:lang='es-ES' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
-            response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
-            audio = response_azure.content
-            main_gpt_flag = False
+            if main_gpt_flag:
+                for sentence in gpt3_request(transcription):
+                    translation = sentence
+                    translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
+                    azure_body = f"""<speak version='1.0' xml:lang='es-ES'><voice xml:lang='es-ES' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
+                    response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+                    audio = response_azure.content
+                    await websocket.send_bytes(audio)
 
-            await websocket.send_bytes(audio)
+                main_gpt_flag = False
+
+            else:
+                # Fix unrecognizeable characters
+                translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
+                azure_body = f"""<speak version='1.0' xml:lang='es-ES'><voice xml:lang='es-ES' xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
+                response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+                audio = response_azure.content
+                main_gpt_flag = False
+
+                await websocket.send_bytes(audio)
 
     deepgram_live.registerHandler(deepgram_live.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
 
