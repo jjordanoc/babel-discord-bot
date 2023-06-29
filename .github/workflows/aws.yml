@@ -51,6 +51,7 @@ jobs:
             
             # Run SpeechAPI
             sudo docker stop interactionhandler
+            sudo docker rm interactionhandler
             sudo docker build -t interactionhandler ./InteractionHandler/
             sudo docker run -d --name interactionhandler -p 80:80 interactionhandler
           '
