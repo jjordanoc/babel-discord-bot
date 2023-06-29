@@ -50,6 +50,7 @@ jobs:
             git pull origin main &&
             
             # Run SpeechAPI
+            sudo docker stop interactionhandler
             sudo docker build -t interactionhandler ./InteractionHandler/
-            sudo docker run -p 80:80 interactionhandler -d
+            sudo docker run -d --name interactionhandler -p 80:80 interactionhandler
           '
