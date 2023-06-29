@@ -9,8 +9,8 @@ RUN npm install -g typescript
 WORKDIR /app
 
 # Copy all neccessary files
-COPY package*.json .
-COPY . .
+COPY package*.json ./
+COPY . ./
 
 # Install packages
 RUN npm install

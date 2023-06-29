@@ -2,56 +2,85 @@ name: CI/CD ajedrezpown
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   deploy_api:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - uses: actions/checkout@v2 
+      - uses: actions/checkout@v2
       - name: Deploy in EC2 SpeechAPI
         env:
-            PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY  }}
-            HOSTNAME_API : ${{ secrets.HOSTNAME_API  }}
-            USER_NAME : ${{ secrets.USER_NAME  }}
-            
+          PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY  }}
+          HOSTNAME_API: ${{ secrets.HOSTNAME_API  }}
+          USER_NAME: ${{ secrets.USER_NAME  }}
+
         run: |
           sudo echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
           sudo ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_API} '
             # Now we have got the access of EC2 and we will start the deploy
-            cd /home/ubuntu/ajedrezpown/ &&
+            cd /home/ec2-user/ajedrezpown/ &&
             git checkout main &&
             git fetch --all && git reset --hard origin/main &&
             git pull origin main &&
-            
+
             # Run SpeechAPI
-            sudo docker compose up -d
+            docker stop ajedrezpown_speechapi_1
+            docker rm ajedrezpown_speechapi_1
+            docker-compose up -d
           '
-          
+
   deploy_bot1:
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v2
       - name: Deploy in EC2 bot1
         env:
-            PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY  }}
-            HOSTNAME_BOT1 : ${{ secrets.HOSTNAME_BOT1  }}
-            USER_NAME : ${{ secrets.USER_NAME  }}
-            
+          PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY  }}
+          HOSTNAME_BOT1: ${{ secrets.HOSTNAME_BOT1  }}
+          USER_NAME: ${{ secrets.USER_NAME  }}
+
         run: |
           sudo echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
           sudo ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_BOT1} '
             # Now we have got the access of EC2 and we will start the deploy
-            cd /home/ubuntu/ajedrezpown/ &&
+            cd /home/ec2-user/ajedrezpown/ &&
             git checkout main &&
             git fetch --all && git reset --hard origin/main &&
             git pull origin main &&
-            
-            # Run SpeechAPI
-            sudo docker stop interactionhandler
-            sudo docker rm interactionhandler
-            sudo docker build -t interactionhandler ./InteractionHandler/
-            sudo docker run -d --name interactionhandler -p 80:80 interactionhandler
+
+            # Run BOT1
+            docker stop interactionhandler
+            docker rm interactionhandler
+            docker build -t interactionhandler ./InteractionHandler/
+            docker run -d --name interactionhandler -p 80:80 interactionhandler
+          '
+
+  deploy_bot2:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Deploy in EC2 bot2
+        env:
+          PRIVATE_KEY: ${{ secrets.AWS_PRIVATE_KEY  }}
+          HOSTNAME_BOT2: ${{ secrets.HOSTNAME_BOT2  }}
+          USER_NAME: ${{ secrets.USER_NAME  }}
+
+        run: |
+          sudo echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+          sudo ssh -o StrictHostKeyChecking=no -i private_key ${USER_NAME}@${HOSTNAME_BOT2} '
+            # Now we have got the access of EC2 and we will start the deploy
+            cd /home/ec2-user/ajedrezpown/ &&
+            git checkout main &&
+            git fetch --all && git reset --hard origin/main &&
+            git pull origin main &&
+
+            # Run BOT2
+            docker stop interactionhandler
+            docker rm interactionhandler
+            docker build -t interactionhandler ./InteractionHandler/
+            docker run -d --name interactionhandler -p 80:80 interactionhandler
           '

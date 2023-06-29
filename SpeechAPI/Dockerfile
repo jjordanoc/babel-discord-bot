@@ -14,7 +14,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # add app
-COPY . .
+COPY . ./
 
 # run api
 CMD ["python3", "api.py"]
