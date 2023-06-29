@@ -51,5 +51,5 @@ jobs:
             
             # Run SpeechAPI
             sudo docker build -t interactionhandler ./InteractionHandler/
-            sudo docker run -p 80:80 interactionhandler
+            sudo docker run -p 80:80 interactionhandler -d
           '
