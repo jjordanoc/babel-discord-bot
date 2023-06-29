@@ -10,7 +10,8 @@ import * as prism from 'prism-media';
 import { WebSocket } from 'ws';
 import * as stream from 'stream';
 import * as JSON from 'json3';
-
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 export function createListeningStream(connection: VoiceConnection, userId: string, languages: {
 	'source': string,
@@ -38,7 +39,7 @@ export function createListeningStream(connection: VoiceConnection, userId: strin
 			channels: 1,
 			frameSize: 960,
 		}));
-	const audioSocket = new WebSocket('ws://127.0.0.1:8000');
+	const audioSocket = new WebSocket(process.env.HOSTNAME_API as string);
 	audioSocket.on('open', () => {
 		audioSocket.send(JSON.stringify(languages));
 		decoder.on('data', (chunk) => {
