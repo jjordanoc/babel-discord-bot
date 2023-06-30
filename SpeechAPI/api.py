@@ -115,9 +115,7 @@ async def audio_socket(websocket: WebSocket):
                     data = f.read()
                     await websocket.send_bytes(data)
 
-                print("Stopping what is saying")
-                writer = websockets.WebSocketWriter(websocket)
-                await writer.drain()
+                print("Stopping what is saying") #In fact it does not stop nothing lol
 
             if transcription == "":
                 print("Empty transcription")
