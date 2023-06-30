@@ -9,6 +9,9 @@ from deepgram import Deepgram
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
 from google.cloud import translate
+from youtubesearchpython import VideosSearch
+import yt_dlp as youtube_dl
+import websockets
 
 load_dotenv()
 
@@ -50,6 +53,7 @@ def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     main_gpt_flag = False
+    music_flag = False
     await websocket.accept()
     # Receive the source language and the target language
     languages = await websocket.receive_json()
@@ -77,15 +81,16 @@ async def audio_socket(websocket: WebSocket):
     """
 
     async def translate_and_send_audio_chunk(result):
-        nonlocal main_gpt_flag
+        nonlocal main_gpt_flag, music_flag
         print("MAIN_GPT_FLAG 1 = " + str(main_gpt_flag))
+        print("MUSIC_FLAG 1 = " + str(music_flag))
         print(result)
         if "is_final" in result and result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
 
             # Checks if 'Babel' was said and turns the gpt_flag true.
             # Also plays a sound indicating a call to GPT was requested
-            if transcription[0:5] == "Babel":
+            if transcription[0:5] == "Babel" and len(transcription) <= 6:
                 main_gpt_flag = True
                 print("MAIN_GPT_FLAG 2 = " + str(main_gpt_flag))
 
@@ -94,6 +99,23 @@ async def audio_socket(websocket: WebSocket):
                     await websocket.send_bytes(data)
 
                 return
+
+            if transcription[0:11].lower() == "babel music" and len(transcription) <= 12:
+                music_flag = True
+                print("MUSIC_FLAG 2 = " + str(music_flag))
+
+                with open('noti-sound.opus', 'rb') as f:
+                    data = f.read()
+                    await websocket.send_bytes(data)
+
+                return
+
+            if transcription[0:10].lower() == "stop music" and len(transcription) <= 11:
+                with open('noti-sound.opus', 'rb') as f:
+                    data = f.read()
+                    await websocket.send_bytes(data)
+
+                print("Stopping what is saying") #In fact it does not stop nothing lol
 
             if transcription == "":
                 print("Empty transcription")
@@ -160,8 +182,32 @@ async def audio_socket(websocket: WebSocket):
             azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
                              "Content-type": "application/ssml+xml",
                              "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+            if music_flag:
+                YDL_OPTIONS = {'format': 'bestaudio',
+                               'outtmpl': 'song',
+                               'postprocessors': [{
+                                   'key': 'FFmpegExtractAudio',
+                                   'preferredcodec': 'opus',
+                                   'preferredquality': '192',
+                               }]
+                               }
 
-            if main_gpt_flag:
+                allSearch = VideosSearch(transcription, limit=1)
+                title = allSearch.result()["result"][0]["title"]
+                print(f"Title:   {title}")
+                link = allSearch.result()["result"][0]["link"]
+                print(f"Link:    {link}")
+
+                with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
+                    info = ydl.extract_info(link, download=True)
+
+                with open('song.opus', 'rb') as f:
+                    data = f.read()
+                    await websocket.send_bytes(data)
+
+                music_flag = False
+
+            elif main_gpt_flag:
                 for sentence in gpt3_request(transcription):
                     translation = sentence
                     translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
