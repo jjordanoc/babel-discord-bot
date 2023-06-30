@@ -20,4 +20,5 @@ RUN npm install typescript@latest
 RUN npx tsc --esModuleInterop --module commonjs --moduleResolution node --target es2020 bot.ts commands.ts register.ts createListeningStream.ts
 
 # Run bot
+RUN node register.js
 CMD ["node", "bot.js"]
