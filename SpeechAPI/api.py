@@ -1,33 +1,26 @@
 import asyncio
 import json
-import os
 
 import openai
 import requests as req
 import uvicorn
 from deepgram import Deepgram
-from dotenv import load_dotenv
+
 from fastapi import FastAPI, WebSocket
 from google.cloud import translate
 from youtubesearchpython import VideosSearch
 import yt_dlp as youtube_dl
 
-load_dotenv()
+from config import Config
 
 app = FastAPI()
 
-# The API key you created in step 1
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+config = Config()
 
-# Initializes the Deepgram SDK
-deepgram = Deepgram(DEEPGRAM_API_KEY)
-
-PROJECT_ID = os.getenv("PROJECT_ID")
+# Initialize external services
+deepgram = Deepgram(config.DEEPGRAM_API_KEY)
 translate_client = translate.TranslationServiceClient()
-location = "global"
-parent = f"projects/{PROJECT_ID}/locations/{location}"
-
-openai.api_key = os.getenv("GPT_KEY")
+openai.api_key = config.OPENAI_API_KEY
 
 # Constants to handle audio actions
 PAUSE_MUSIC = "$$PAUSE_MUSIC$$"
@@ -66,9 +59,9 @@ def synthesize_voice(text: str, speaker: str) -> bytes:
     :param speaker: a valid Azure Cognitive Services voice code
     :return: the audio of the synthesized text
     """
-    azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
+    azure_url = f"""https://{config.AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"""
 
-    azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
+    azure_headers = {"Ocp-Apim-Subscription-Key": F"""{config.AZURE_SPEECH_API_KEY}""",
                      "Content-type": "application/ssml+xml",
                      "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
     # Fix unrecognizeable characters
@@ -242,7 +235,7 @@ async def audio_socket(websocket: WebSocket):
                 # Translate transcription
                 google_translate_response = translate_client.translate_text(
                     request={
-                        "parent": parent,
+                        "parent": config.GOOGLE_TRANSLATE_PARENT_DIRECTORY,
                         "contents": [transcription],
                         "mime_type": "text/plain",
                         "source_language_code": src_lang,
