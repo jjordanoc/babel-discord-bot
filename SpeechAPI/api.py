@@ -215,8 +215,8 @@ async def audio_socket(websocket: WebSocket):
                 title = search_all.result()["result"][0]["title"]
                 link = search_all.result()["result"][0]["link"]
 
-                await websocket.send_text(START_MUSIC)
                 await websocket.send_bytes(synthesize_voice(text=f"Playing {title}", speaker=speaker))
+                await websocket.send_text(START_MUSIC)
 
                 with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
                     ydl.extract_info(link, download=True)
@@ -224,6 +224,7 @@ async def audio_socket(websocket: WebSocket):
                 with open('song.opus', 'rb') as f:
                     data = f.read()
                     await websocket.send_bytes(data)
+                    await websocket.send_text(FINISH_MUSIC)
 
                 music_flag = False
 

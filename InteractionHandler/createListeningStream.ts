@@ -67,11 +67,12 @@ export function createListeningStream(connection: VoiceConnection, userId: strin
 	});
 	connection.subscribe(player);
 	const queue = [];
-	let isPlayingMusic = false;
+	let isPlayingMusic = false, isReceivingMusicAudioBytes = false;
 	player.on('stateChange', (oldState, newState) => {
 		if (oldState.status == AudioPlayerStatus.Playing
 			&& newState.status == AudioPlayerStatus.Idle) {
-			if (isPlayingMusic) {
+			if (isPlayingMusic && !isReceivingMusicAudioBytes) {
+				console.log('stopped playing music');
 				isPlayingMusic = false;
 			}
 			if (queue.length > 0) {
@@ -82,9 +83,16 @@ export function createListeningStream(connection: VoiceConnection, userId: strin
 	});
 	audioSocket.on('message', (data) => {
 		if (data.toString() == START_MUSIC) {
+			console.log('started playing music');
 			isPlayingMusic = true;
+			isReceivingMusicAudioBytes = true;
+		}
+		if (data.toString() == FINISH_MUSIC) {
+			console.log('finished receiving music audio');
+			isReceivingMusicAudioBytes = false;
 		}
 		if (data.toString() == PAUSE_MUSIC && player.state.status == AudioPlayerStatus.Playing) {
+			console.log('pausing music');
 			player.pause(true);
 			isPlayingMusic = false;
 		}
@@ -94,11 +102,20 @@ export function createListeningStream(connection: VoiceConnection, userId: strin
 			translatedAudioStream.end();
 			const resource =
 				createAudioResource(translatedAudioStream, { inputType: StreamType.OggOpus });
-			if (player.state.status == AudioPlayerStatus.Playing && !isPlayingMusic) {
-				// player is currently busy, add to queue
-				queue.push(resource);
+			if (player.state.status == AudioPlayerStatus.Playing) {
+				if (isReceivingMusicAudioBytes || !isPlayingMusic) {
+					// player is currently busy, add to queue
+					console.log('adding audio to queue');
+					queue.push(resource);
+				}
+				else {
+					// player is busy playing music, discard result
+					console.log('discarding result');
+				}
+
 			}
 			else {
+				console.log('playing audio directly');
 				player.play(resource);
 			}
 		}
