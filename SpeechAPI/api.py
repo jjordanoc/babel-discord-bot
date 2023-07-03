@@ -30,6 +30,11 @@ parent = f"projects/{PROJECT_ID}/locations/{location}"
 
 openai.api_key = os.getenv("GPT_KEY")
 
+# Constants to handle audio actions
+PAUSE_MUSIC = "$$PAUSE_MUSIC$$"
+FINISH_MUSIC = "$$FINISH_MUSIC$$"
+START_MUSIC = "$$START_MUSIC$$"
+
 
 def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
     messages = [
@@ -88,9 +93,7 @@ async def audio_socket(websocket: WebSocket):
         if "is_final" in result and result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
 
-            # Checks if 'Babel' was said and turns the gpt_flag true.
-            # Also plays a sound indicating a call to GPT was requested
-            if transcription[0:5] == "Babel" and len(transcription) <= 6:
+            if transcription[0:5].lower() == "babel" and len(transcription) <= 6:
                 main_gpt_flag = True
                 print("MAIN_GPT_FLAG 2 = " + str(main_gpt_flag))
 
@@ -110,12 +113,9 @@ async def audio_socket(websocket: WebSocket):
 
                 return
 
-            if transcription[0:10].lower() == "stop music" and len(transcription) <= 11:
-                with open('noti-sound.opus', 'rb') as f:
-                    data = f.read()
-                    await websocket.send_bytes(data)
-
-                print("Stopping what is saying") #In fact it does not stop nothing lol
+            if transcription[0:10].lower() == "stop music" and len(transcription) <= 12:
+                await websocket.send_text(PAUSE_MUSIC)
+                return
 
             if transcription == "":
                 print("Empty transcription")
@@ -123,7 +123,7 @@ async def audio_socket(websocket: WebSocket):
 
             # If the user is making a voice query, the speaker's voice should be in the user's source language
             speaker = ""
-            if main_gpt_flag:
+            if main_gpt_flag or music_flag:
                 if src_lang == "en":
                     if gender_lang == "Female":
                         speaker = "en-US-JennyNeural"
@@ -197,9 +197,15 @@ async def audio_socket(websocket: WebSocket):
                 print(f"Title:   {title}")
                 link = allSearch.result()["result"][0]["link"]
                 print(f"Link:    {link}")
+                # Fix unrecognizeable characters
+                title = title.encode('ascii', 'xmlcharrefreplace').decode("ascii")
+                azure_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" xml:gender='{gender_lang}' name='{speaker}'>Playing {title}</voice></speak>"""
+                response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+                await websocket.send_text(START_MUSIC)
+                await websocket.send_bytes(response_azure.content)
 
                 with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
-                    info = ydl.extract_info(link, download=True)
+                    ydl.extract_info(link, download=True)
 
                 with open('song.opus', 'rb') as f:
                     data = f.read()
@@ -213,8 +219,7 @@ async def audio_socket(websocket: WebSocket):
                     translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
                     azure_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
                     response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
-                    audio = response_azure.content
-                    await websocket.send_bytes(audio)
+                    await websocket.send_bytes(response_azure.content)
                 main_gpt_flag = False
             else:
                 # Translate transcription
