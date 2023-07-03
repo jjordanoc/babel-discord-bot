@@ -11,7 +11,6 @@ from fastapi import FastAPI, WebSocket
 from google.cloud import translate
 from youtubesearchpython import VideosSearch
 import yt_dlp as youtube_dl
-import websockets
 
 load_dotenv()
 
@@ -55,6 +54,65 @@ def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
                 current_sentence = ''
 
 
+def choose_voice(src_lang: str, trg_lang: str, gender_lang: str, use_src_lang: bool) -> str:
+    """
+    If the user is making a voice query, the speaker's voice should be in the user's source language
+    Otherwise, the translation should be spoken in the target language
+    """
+    if use_src_lang:
+        if src_lang == "en":
+            if gender_lang == "Female":
+                return "en-US-JennyNeural"
+            elif gender_lang == "Male":
+                return "en-US-BrandonNeural"
+        elif src_lang == "es":
+            if gender_lang == "Female":
+                return "es-PE-CamilaNeural"
+            elif gender_lang == "Male":
+                return "es-PE-AlexNeural"
+        elif src_lang == "fr":
+            if gender_lang == "Female":
+                return "fr-FR-DeniseNeural"
+            elif gender_lang == "Male":
+                return "fr-FR-HenriNeural"
+        elif src_lang == "it":
+            if gender_lang == "Female":
+                return "it-IT-ElsaNeural"
+            elif gender_lang == "Male":
+                return "it-IT-DiegoNeural"
+        elif src_lang == "de":
+            if gender_lang == "Female":
+                return "de-DE-AmalaNeural"
+            elif gender_lang == "Male":
+                return "de-DE-KasperNeural"
+    else:
+        if trg_lang == "en":
+            if gender_lang == "Female":
+                return "en-US-JennyNeural"
+            elif gender_lang == "Male":
+                return "en-US-BrandonNeural"
+        elif trg_lang == "es":
+            if gender_lang == "Female":
+                return "es-PE-CamilaNeural"
+            elif gender_lang == "Male":
+                return "es-PE-AlexNeural"
+        elif trg_lang == "fr":
+            if gender_lang == "Female":
+                return "fr-FR-DeniseNeural"
+            elif gender_lang == "Male":
+                return "fr-FR-HenriNeural"
+        elif trg_lang == "it":
+            if gender_lang == "Female":
+                return "it-IT-ElsaNeural"
+            elif gender_lang == "Male":
+                return "it-IT-DiegoNeural"
+        elif trg_lang == "de":
+            if gender_lang == "Female":
+                return "de-DE-AmalaNeural"
+            elif gender_lang == "Male":
+                return "de-DE-KasperNeural"
+
+
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     main_gpt_flag = False
@@ -80,12 +138,11 @@ async def audio_socket(websocket: WebSocket):
     # Listen for the connection to close
     deepgram_live.registerHandler(deepgram_live.event.CLOSE, lambda _: print('Connection with deepgram closed.'))
 
-    """
-    Listen for any transcripts received from Deepgram
-    and use them for translation, querying or playing music
-    """
-
     async def translate_and_send_audio_chunk(result):
+        """
+        Listen for any transcripts received from Deepgram
+        and use them for translation, querying or playing music
+        """
         nonlocal main_gpt_flag, music_flag
         print("MAIN_GPT_FLAG 1 = " + str(main_gpt_flag))
         print("MUSIC_FLAG 1 = " + str(music_flag))
@@ -121,61 +178,8 @@ async def audio_socket(websocket: WebSocket):
                 print("Empty transcription")
                 return
 
-            # If the user is making a voice query, the speaker's voice should be in the user's source language
-            speaker = ""
-            if main_gpt_flag or music_flag:
-                if src_lang == "en":
-                    if gender_lang == "Female":
-                        speaker = "en-US-JennyNeural"
-                    elif gender_lang == "Male":
-                        speaker = "en-US-BrandonNeural"
-                elif src_lang == "es":
-                    if gender_lang == "Female":
-                        speaker = "es-PE-CamilaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "es-PE-AlexNeural"
-                elif src_lang == "fr":
-                    if gender_lang == "Female":
-                        speaker = "fr-FR-DeniseNeural"
-                    elif gender_lang == "Male":
-                        speaker = "fr-FR-HenriNeural"
-                elif src_lang == "it":
-                    if gender_lang == "Female":
-                        speaker = "it-IT-ElsaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "it-IT-DiegoNeural"
-                elif trg_lang == "de":
-                    if gender_lang == "Female":
-                        speaker = "de-DE-AmalaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "de-DE-KasperNeural"
-            # Otherwise, the translation should be spoken in the target language
-            else:
-                if trg_lang == "en":
-                    if gender_lang == "Female":
-                        speaker = "en-US-JennyNeural"
-                    elif gender_lang == "Male":
-                        speaker = "en-US-BrandonNeural"
-                elif trg_lang == "es":
-                    if gender_lang == "Female":
-                        speaker = "es-PE-CamilaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "es-PE-AlexNeural"
-                elif trg_lang == "fr":
-                    if gender_lang == "Female":
-                        speaker = "fr-FR-DeniseNeural"
-                    elif gender_lang == "Male":
-                        speaker = "fr-FR-HenriNeural"
-                elif trg_lang == "it":
-                    if gender_lang == "Female":
-                        speaker = "it-IT-ElsaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "it-IT-DiegoNeural"
-                elif trg_lang == "de":
-                    if gender_lang == "Female":
-                        speaker = "de-DE-AmalaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "de-DE-KasperNeural"
+            speaker = choose_voice(src_lang=src_lang, trg_lang=trg_lang, gender_lang=gender_lang,
+                                   use_src_lang=main_gpt_flag or music_flag)
 
             azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
 
@@ -248,21 +252,19 @@ async def audio_socket(websocket: WebSocket):
 
     deepgram_live.registerHandler(deepgram_live.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
 
-    """
-    Receive the audio asynchronously and send it to deepgram
-    """
-
     async def receive_audio():
+        """
+        Receive the audio asynchronously and send it to deepgram
+        """
         while True:
             audio_bytes: bytes = await websocket.receive_bytes()
             deepgram_live.send(audio_bytes)
 
-    """
-    Make sure the connection is kept alive by
-    sending a KeepAlive JSON to Deepgram every 7 seconds
-    """
-
     async def keep_deepgram_alive():
+        """
+        Make sure the connection is kept alive by
+        sending a KeepAlive JSON to Deepgram every 7 seconds
+        """
         while True:
             deepgram_live.send(json.dumps({
                 "type": "KeepAlive"
