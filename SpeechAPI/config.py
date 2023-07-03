@@ -10,6 +10,7 @@ class Config:
 
     def __init__(self) -> None:
         load_dotenv()
+        self._get_required_env_var("GOOGLE_APPLICATION_CREDENTIALS")
         self.DEEPGRAM_API_KEY = self._get_required_env_var("DEEPGRAM_API_KEY")
         self.GOOGLE_TRANSLATE_PARENT_DIRECTORY = f"projects/{self._get_required_env_var('PROJECT_ID')}/locations/global"
         self.OPENAI_API_KEY = self._get_required_env_var("GPT_KEY")
