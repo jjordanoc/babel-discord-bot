@@ -35,7 +35,13 @@ FINISH_MUSIC = "$$FINISH_MUSIC$$"
 START_MUSIC = "$$START_MUSIC$$"
 
 
-def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
+def gpt_request(prompt: str, model: str = "gpt-3.5-turbo-0613") -> str:
+    """
+    A generator that yields sentences from a request to the openai api
+    :param prompt: prompt to be sent to gpt
+    :param model: openai model to use
+    :return: sentences of the response
+    """
     messages = [
         {"role": "user", "content": prompt}
     ]
@@ -54,10 +60,31 @@ def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
                 current_sentence = ''
 
 
+def synthesize_voice(text: str, speaker: str) -> bytes:
+    """
+    :param text: the text which is to be synthesized
+    :param speaker: a valid Azure Cognitive Services voice code
+    :return: the audio of the synthesized text
+    """
+    azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
+
+    azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
+                     "Content-type": "application/ssml+xml",
+                     "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+    # Fix unrecognizeable characters
+    text = text.encode('ascii', 'xmlcharrefreplace').decode("ascii")
+    azure_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" name='{speaker}'>{text}</voice></speak>"""
+    response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+    return response_azure.content
+
+
 def choose_voice(src_lang: str, trg_lang: str, gender_lang: str, use_src_lang: bool) -> str:
     """
-    If the user is making a voice query, the speaker's voice should be in the user's source language
-    Otherwise, the translation should be spoken in the target language
+    :param src_lang: a valid language code to use as source language
+    :param trg_lang: a valid language code to use as target language
+    :param gender_lang: either 'Female' or 'Male'
+    :param use_src_lang: uses src_lang if True, trg_lang if False
+    :return: the Azure Cognitive Services voice code given by the specified langauge and gender
     """
     if use_src_lang:
         if src_lang == "en":
@@ -181,11 +208,6 @@ async def audio_socket(websocket: WebSocket):
             speaker = choose_voice(src_lang=src_lang, trg_lang=trg_lang, gender_lang=gender_lang,
                                    use_src_lang=main_gpt_flag or music_flag)
 
-            azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
-
-            azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
-                             "Content-type": "application/ssml+xml",
-                             "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
             if music_flag:
                 YDL_OPTIONS = {'format': 'bestaudio',
                                'outtmpl': 'song',
@@ -196,17 +218,12 @@ async def audio_socket(websocket: WebSocket):
                                }]
                                }
 
-                allSearch = VideosSearch(transcription, limit=1)
-                title = allSearch.result()["result"][0]["title"]
-                print(f"Title:   {title}")
-                link = allSearch.result()["result"][0]["link"]
-                print(f"Link:    {link}")
-                # Fix unrecognizeable characters
-                title = title.encode('ascii', 'xmlcharrefreplace').decode("ascii")
-                azure_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" xml:gender='{gender_lang}' name='{speaker}'>Playing {title}</voice></speak>"""
-                response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+                search_all = VideosSearch(transcription, limit=1)
+                title = search_all.result()["result"][0]["title"]
+                link = search_all.result()["result"][0]["link"]
+
                 await websocket.send_text(START_MUSIC)
-                await websocket.send_bytes(response_azure.content)
+                await websocket.send_bytes(synthesize_voice(text=f"Playing {title}", speaker=speaker))
 
                 with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
                     ydl.extract_info(link, download=True)
@@ -218,12 +235,8 @@ async def audio_socket(websocket: WebSocket):
                 music_flag = False
 
             elif main_gpt_flag:
-                for sentence in gpt3_request(transcription):
-                    translation = sentence
-                    translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
-                    azure_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
-                    response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
-                    await websocket.send_bytes(response_azure.content)
+                for sentence in gpt_request(transcription):
+                    await websocket.send_bytes(synthesize_voice(text=sentence, speaker=speaker))
                 main_gpt_flag = False
             else:
                 # Translate transcription
@@ -242,13 +255,8 @@ async def audio_socket(websocket: WebSocket):
                 else:
                     print(f"Error in translation {google_translate_response}")
                     return
-                # Fix unrecognizeable characters
-                translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
-                azure_request_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
-                azure_text_to_speech_response = req.post(azure_url, headers=azure_headers, data=azure_request_body)
-                audio = azure_text_to_speech_response.content
                 main_gpt_flag = False
-                await websocket.send_bytes(audio)
+                await websocket.send_bytes(synthesize_voice(text=translation, speaker=speaker))
 
     deepgram_live.registerHandler(deepgram_live.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
 
