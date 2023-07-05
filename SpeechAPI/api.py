@@ -79,58 +79,17 @@ def choose_voice(src_lang: str, trg_lang: str, gender_lang: str, use_src_lang: b
     :param use_src_lang: uses src_lang if True, trg_lang if False
     :return: the Azure Cognitive Services voice code given by the specified langauge and gender
     """
-    if use_src_lang:
-        if src_lang == "en":
-            if gender_lang == "Female":
-                return "en-US-JennyNeural"
-            elif gender_lang == "Male":
-                return "en-US-BrandonNeural"
-        elif src_lang == "es":
-            if gender_lang == "Female":
-                return "es-PE-CamilaNeural"
-            elif gender_lang == "Male":
-                return "es-PE-AlexNeural"
-        elif src_lang == "fr":
-            if gender_lang == "Female":
-                return "fr-FR-DeniseNeural"
-            elif gender_lang == "Male":
-                return "fr-FR-HenriNeural"
-        elif src_lang == "it":
-            if gender_lang == "Female":
-                return "it-IT-ElsaNeural"
-            elif gender_lang == "Male":
-                return "it-IT-DiegoNeural"
-        elif src_lang == "de":
-            if gender_lang == "Female":
-                return "de-DE-AmalaNeural"
-            elif gender_lang == "Male":
-                return "de-DE-KasperNeural"
-    else:
-        if trg_lang == "en":
-            if gender_lang == "Female":
-                return "en-US-JennyNeural"
-            elif gender_lang == "Male":
-                return "en-US-BrandonNeural"
-        elif trg_lang == "es":
-            if gender_lang == "Female":
-                return "es-PE-CamilaNeural"
-            elif gender_lang == "Male":
-                return "es-PE-AlexNeural"
-        elif trg_lang == "fr":
-            if gender_lang == "Female":
-                return "fr-FR-DeniseNeural"
-            elif gender_lang == "Male":
-                return "fr-FR-HenriNeural"
-        elif trg_lang == "it":
-            if gender_lang == "Female":
-                return "it-IT-ElsaNeural"
-            elif gender_lang == "Male":
-                return "it-IT-DiegoNeural"
-        elif trg_lang == "de":
-            if gender_lang == "Female":
-                return "de-DE-AmalaNeural"
-            elif gender_lang == "Male":
-                return "de-DE-KasperNeural"
+
+    voice_codes = {
+        "en": {"Female": "en-US-JennyNeural", "Male": "en-US-BrandonNeural"},
+        "es": {"Female": "es-PE-CamilaNeural", "Male": "es-PE-AlexNeural"},
+        "fr": {"Female": "fr-FR-DeniseNeural", "Male": "fr-FR-HenriNeural"},
+        "it": {"Female": "it-IT-ElsaNeural", "Male": "it-IT-DiegoNeural"},
+        "de": {"Female": "de-DE-AmalaNeural", "Male": "de-DE-KasperNeural"},
+    }
+
+    lang = src_lang if use_src_lang else trg_lang
+    return voice_codes.get(lang, {}).get(gender_lang)
 
 
 @app.websocket("/")
@@ -147,8 +106,14 @@ async def audio_socket(websocket: WebSocket):
     # Create a websocket connection to Deepgram
     try:
         deepgram_live = await deepgram.transcription.live(
-            {"punctuate": True, "model": "enhanced", "language": src_lang, "encoding": "linear16", "sample_rate": 48000,
-             "channels": 1}
+            {"punctuate": True,
+             "model": "enhanced",
+             "language": src_lang,
+             "encoding": "linear16",
+             "sample_rate": 48000,
+             "channels": 1,
+             "keywords": ["Babel:10000", "Bavel:-10000", "bavel:-10000"],
+             }
         )
     except Exception as e:
         print(f'Could not open socket: {e}')
@@ -180,7 +145,12 @@ async def audio_socket(websocket: WebSocket):
 
                 return
 
-            if transcription[0:11].lower() == "babel music" and len(transcription) <= 12:
+            if (transcription[0:11].lower() == "babel music" and len(transcription) <= 12 and src_lang == "en") or \
+               (transcription[0:12].lower() == "babel música" and len(transcription) <= 13 and src_lang == "es") or \
+               (transcription[0:13].lower() == "babel musique" and len(transcription) <= 14 and src_lang == "fr") or \
+               (transcription[0:13].lower() == "babele musica" and len(transcription) <= 14 and src_lang == "it") or \
+               (transcription[0:11].lower() == "babel musik" and len(transcription) <= 12 and src_lang == "de"):
+
                 music_flag = True
                 print("MUSIC_FLAG 2 = " + str(music_flag))
 
