@@ -148,17 +148,22 @@ async def audio_socket(websocket: WebSocket):
                (transcription[0:13].lower() == "babele musica" and len(transcription) <= 14 and src_lang == "it") or \
                (transcription[0:11].lower() == "babel musik" and len(transcription) <= 12 and src_lang == "de"):
 
-                music_flag = True
+                    music_flag = True
 
-                with open('noti-sound.opus', 'rb') as f:
-                    data = f.read()
-                    await websocket.send_bytes(data)
+                    with open('noti-sound.opus', 'rb') as f:
+                        data = f.read()
+                        await websocket.send_bytes(data)
 
-                return
+                    return
 
-            if transcription[0:10].lower() == "stop music" and len(transcription) <= 12:
-                await websocket.send_text(PAUSE_MUSIC)
-                return
+            if (transcription[0:10].lower() == "stop music" and len(transcription) <= 11 and src_lang == "en") or \
+               (transcription[0:12].lower() == "parar música" and len(transcription) <= 13 and src_lang == "es") or \
+               (transcription[0:18].lower() == "arrêter la musique" and len(transcription) <= 19 and src_lang == "fr") or \
+               (transcription[0:17].lower() == "fermare la musica" and len(transcription) <= 18 and src_lang == "it") or \
+               (transcription[0:21].lower() == "stoppen sie die musik" and len(transcription) <= 22 and src_lang == "de"):
+
+                    await websocket.send_text(PAUSE_MUSIC)
+                    return
 
             if transcription == "":
                 print("Empty transcription")
