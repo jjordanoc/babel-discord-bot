@@ -54,7 +54,7 @@ function leaveHandler(interaction) {
                 console.warn('Currently in idle. Join a voice channel to use this command.');
                 interaction.reply({
                     ephemeral: true,
-                    content: 'Currently in idle. Join a voice channel to use this command.',
+                    content: 'Currently in idle. Join a voice channel to use this command.'
                 });
             }
             try {
@@ -63,7 +63,7 @@ function leaveHandler(interaction) {
                     console.info('Could not disconnect from voice channel, please call the leave method correctly.');
                     interaction.reply({
                         ephemeral: true,
-                        content: 'Could not disconnect from voice channel, please call the leave method correctly.',
+                        content: 'Could not disconnect from voice channel, please call the leave method correctly.'
                     });
                 }
                 connection.disconnect();
@@ -74,7 +74,7 @@ function leaveHandler(interaction) {
                 console.error(error);
                 interaction.reply({
                     ephemeral: true,
-                    content: 'Could not leave voice channel due to an unexpected error. Please disconnect the bot manually.',
+                    content: 'Could not leave voice channel due to an unexpected error. Please disconnect the bot manually.'
                 });
             }
             return [2 /*return*/];

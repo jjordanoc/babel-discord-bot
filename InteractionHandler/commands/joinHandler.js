@@ -62,12 +62,12 @@ function joinHandler(interaction) {
                         guildId: guildId,
                         adapterCreator: interaction.guild.voiceAdapterCreator,
                         selfDeaf: false,
-                        selfMute: true,
+                        selfMute: true
                     });
                     options = {
                         'source': interaction.options.getString('source'),
                         'target': interaction.options.getString('target'),
-                        'gender': interaction.options.getString('gender'),
+                        'gender': interaction.options.getString('gender')
                     };
                     _a.label = 1;
                 case 1:
@@ -87,7 +87,7 @@ function joinHandler(interaction) {
                     console.warn(error_1);
                     interaction.reply({
                         ephemeral: true,
-                        content: 'Failed to join voice channel within 20 seconds, please try again later!',
+                        content: 'Failed to join voice channel within 20 seconds, please try again later!'
                     });
                     return [3 /*break*/, 4];
                 case 4: return [2 /*return*/];
