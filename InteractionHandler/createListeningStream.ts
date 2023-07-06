@@ -1,10 +1,10 @@
 import {
-    AudioPlayerStatus,
-    createAudioPlayer,
-    createAudioResource,
-    EndBehaviorType,
-    StreamType,
-    VoiceConnection,
+	AudioPlayerStatus,
+	createAudioPlayer,
+	createAudioResource,
+	EndBehaviorType,
+	StreamType,
+	VoiceConnection,
 } from '@discordjs/voice';
 import * as prism from 'prism-media';
 import { WebSocket } from 'ws';
@@ -46,122 +46,124 @@ export function createListeningStream(connection: VoiceConnection, userId: strin
     'target': string,
     'gender': string
 }) {
-    /*
+	/*
     Send user audio through socket
      */
-    const opusStream = connection.receiver.subscribe(userId, {
-        end: {
-            behavior: EndBehaviorType.Manual,
-        },
-    });
+	const opusStream = connection.receiver.subscribe(userId, {
+		end: {
+			behavior: EndBehaviorType.Manual,
+		},
+	});
 
-    opusStream.on('end', () => {
-        // TODO: perform cleanup
-    });
+	opusStream.on('end', () => {
+		// TODO: perform cleanup
+	});
 
-    opusStream.on('close', () => {
-        console.log('Closed user audio stream');
-        audioSocket.close();
-    });
+	opusStream.on('close', () => {
+		console.log('Closed user audio stream');
+		audioSocket.close();
+	});
 
-    const decoder = opusStream
-        .pipe(new prism.opus.Decoder({
-            rate: 48000,
-            channels: 1,
-            frameSize: 960,
-        }));
+	const decoder = opusStream
+		.pipe(new prism.opus.Decoder({
+			rate: 48000,
+			channels: 1,
+			frameSize: 960,
+		}));
 
-    const player = createAudioPlayer();
+	const player = createAudioPlayer();
 
-    player.on('error', error => {
-        console.error(error.message);
-    });
+	player.on('error', error => {
+		console.error(error.message);
+	});
 
-    connection.subscribe(player);
+	connection.subscribe(player);
 
-    const queue = [];
+	const queue = [];
 
-    let isPlayingMusic = false;
-    let isReceivingMusicAudioBytes = false;
+	let isPlayingMusic = false;
+	let isReceivingMusicAudioBytes = false;
 
-    player.on('stateChange', (oldState, newState) => {
-        if (oldState.status == AudioPlayerStatus.Playing && newState.status == AudioPlayerStatus.Idle) {
-            if (isPlayingMusic && !isReceivingMusicAudioBytes) {
-                console.log('stopped playing music');
-                isPlayingMusic = false;
-            }
+	player.on('stateChange', (oldState, newState) => {
+		if (oldState.status == AudioPlayerStatus.Playing && newState.status == AudioPlayerStatus.Idle) {
+			if (isPlayingMusic && !isReceivingMusicAudioBytes) {
+				console.log('stopped playing music');
+				isPlayingMusic = false;
+			}
 
-            if (queue.length > 0) {
-                // play next resource in queue
-                player.play(queue.shift());
-            }
-        }
-    });
+			if (queue.length > 0) {
+				// play next resource in queue
+				player.play(queue.shift());
+			}
+		}
+	});
 
-    const audioSocket = new WebSocket(process.env.HOSTNAME_API as string);
+	const audioSocket = new WebSocket(process.env.HOSTNAME_API as string);
 
-    audioSocket.on('message', (data) => {
-        switch (data.toString()){
-            case START_MUSIC: {
-                console.log('started playing music');
-                isPlayingMusic = true;
-                isReceivingMusicAudioBytes = true;
-                break;
-            }
+	audioSocket.on('message', (data) => {
+		switch (data.toString()) {
+		case START_MUSIC: {
+			console.log('started playing music');
+			isPlayingMusic = true;
+			isReceivingMusicAudioBytes = true;
+			break;
+		}
 
-            case FINISH_MUSIC: {
-                console.log('finished receiving music audio');
-                isReceivingMusicAudioBytes = false;
-                break;
-            }
+		case FINISH_MUSIC: {
+			console.log('finished receiving music audio');
+			isReceivingMusicAudioBytes = false;
+			break;
+		}
 
-            case PAUSE_MUSIC: {
-                if (player.state.status == AudioPlayerStatus.Playing) {
-                    console.log('pausing music');
-                    player.pause(true);
-                    isPlayingMusic = false;
-                }
-                break;
-            }
+		case PAUSE_MUSIC: {
+			if (player.state.status == AudioPlayerStatus.Playing) {
+				console.log('pausing music');
+				player.pause(true);
+				isPlayingMusic = false;
+			}
+			break;
+		}
 
-            default: {
-                const translatedAudioStream = new stream.PassThrough();
-                translatedAudioStream.write(data);
-                translatedAudioStream.end();
-                const resource =
-                    createAudioResource(translatedAudioStream, {inputType: StreamType.OggOpus});
+		default: {
+			const translatedAudioStream = new stream.PassThrough();
+			translatedAudioStream.write(data);
+			translatedAudioStream.end();
+			const resource =
+                    createAudioResource(translatedAudioStream, { inputType: StreamType.OggOpus });
 
-                if (player.state.status != AudioPlayerStatus.Playing) {
-                    console.log('playing audio directly');
-                    player.play(resource);
-                }
+			if (player.state.status != AudioPlayerStatus.Playing) {
+				console.log('playing audio directly');
+				player.play(resource);
+				break;
+			}
 
-                if(!isReceivingMusicAudioBytes && isPlayingMusic) {
-                    console.log('discarding result');
-                }
+			if (!isReceivingMusicAudioBytes && isPlayingMusic) {
+				console.log('discarding result');
+				break;
+			}
 
-                console.log('adding audio to queue');
-                queue.push(resource);
+			console.log('adding audio to queue');
+			queue.push(resource);
 
-                break;
-            }
-        }
-    });
+			break;
+		}
+		}
+	});
 
-    audioSocket.on('open', () => {
-        audioSocket.send(JSON.stringify(options));
+	audioSocket.on('open', () => {
+		audioSocket.send(JSON.stringify(options));
 
-        decoder.on('data', (chunk) => {
-            audioSocket.send(chunk);
-        });
+		decoder.on('data', (chunk) => {
+			audioSocket.send(chunk);
+		});
 
-        decoder.on('close', () => {
-            audioSocket.close();
-        });
-    });
+		decoder.on('close', () => {
+			audioSocket.close();
+		});
+	});
 
-    audioSocket.on('error', () => {
-        console.error('An error occurred while connecting to WebSocket');
-    });
+	audioSocket.on('error', () => {
+		console.error('An error occurred while connecting to WebSocket');
+	});
 
 }
