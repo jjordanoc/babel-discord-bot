@@ -129,15 +129,12 @@ async def audio_socket(websocket: WebSocket):
         and use them for translation, querying or playing music
         """
         nonlocal main_gpt_flag, music_flag
-        print("MAIN_GPT_FLAG 1 = " + str(main_gpt_flag))
-        print("MUSIC_FLAG 1 = " + str(music_flag))
-        print(result)
+
         if "is_final" in result and result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
 
             if transcription[0:5].lower() == "babel" and len(transcription) <= 6:
                 main_gpt_flag = True
-                print("MAIN_GPT_FLAG 2 = " + str(main_gpt_flag))
 
                 with open('noti-sound.opus', 'rb') as f:
                     data = f.read()
@@ -152,7 +149,6 @@ async def audio_socket(websocket: WebSocket):
                (transcription[0:11].lower() == "babel musik" and len(transcription) <= 12 and src_lang == "de"):
 
                 music_flag = True
-                print("MUSIC_FLAG 2 = " + str(music_flag))
 
                 with open('noti-sound.opus', 'rb') as f:
                     data = f.read()
