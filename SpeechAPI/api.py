@@ -1,37 +1,40 @@
 import asyncio
 import json
-import os
 
 import openai
 import requests as req
 import uvicorn
 from deepgram import Deepgram
-from dotenv import load_dotenv
+
 from fastapi import FastAPI, WebSocket
 from google.cloud import translate
 from youtubesearchpython import VideosSearch
 import yt_dlp as youtube_dl
-import websockets
 
-load_dotenv()
+from config import Config
 
 app = FastAPI()
 
-# The API key you created in step 1
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+config = Config()
 
-# Initializes the Deepgram SDK
-deepgram = Deepgram(DEEPGRAM_API_KEY)
-
-PROJECT_ID = os.getenv("PROJECT_ID")
+# Initialize external services
+deepgram = Deepgram(config.DEEPGRAM_API_KEY)
 translate_client = translate.TranslationServiceClient()
-location = "global"
-parent = f"projects/{PROJECT_ID}/locations/{location}"
+openai.api_key = config.OPENAI_API_KEY
 
-openai.api_key = os.getenv("GPT_KEY")
+# Constants to handle audio actions
+PAUSE_MUSIC = "$$PAUSE_MUSIC$$"
+FINISH_MUSIC = "$$FINISH_MUSIC$$"
+START_MUSIC = "$$START_MUSIC$$"
 
 
-def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
+def gpt_request(prompt: str, model: str = "gpt-3.5-turbo-0613") -> str:
+    """
+    A generator that yields sentences from a request to the openai api
+    :param prompt: prompt to be sent to gpt
+    :param model: openai model to use
+    :return: sentences of the response
+    """
     messages = [
         {"role": "user", "content": prompt}
     ]
@@ -50,6 +53,45 @@ def gpt3_request(prompt, model="gpt-3.5-turbo-0613"):
                 current_sentence = ''
 
 
+def synthesize_voice(text: str, speaker: str) -> bytes:
+    """
+    :param text: the text which is to be synthesized
+    :param speaker: a valid Azure Cognitive Services voice code
+    :return: the audio of the synthesized text
+    """
+    azure_url = f"""https://{config.AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"""
+
+    azure_headers = {"Ocp-Apim-Subscription-Key": F"""{config.AZURE_SPEECH_API_KEY}""",
+                     "Content-type": "application/ssml+xml",
+                     "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
+    # Fix unrecognizeable characters
+    text = text.encode('ascii', 'xmlcharrefreplace').decode("ascii")
+    azure_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" name='{speaker}'>{text}</voice></speak>"""
+    response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
+    return response_azure.content
+
+
+def choose_voice(src_lang: str, trg_lang: str, gender_lang: str, use_src_lang: bool) -> str:
+    """
+    :param src_lang: a valid language code to use as source language
+    :param trg_lang: a valid language code to use as target language
+    :param gender_lang: either 'Female' or 'Male'
+    :param use_src_lang: uses src_lang if True, trg_lang if False
+    :return: the Azure Cognitive Services voice code given by the specified langauge and gender
+    """
+
+    voice_codes = {
+        "en": {"Female": "en-US-JennyNeural", "Male": "en-US-BrandonNeural"},
+        "es": {"Female": "es-PE-CamilaNeural", "Male": "es-PE-AlexNeural"},
+        "fr": {"Female": "fr-FR-DeniseNeural", "Male": "fr-FR-HenriNeural"},
+        "it": {"Female": "it-IT-ElsaNeural", "Male": "it-IT-DiegoNeural"},
+        "de": {"Female": "de-DE-AmalaNeural", "Male": "de-DE-KasperNeural"},
+    }
+
+    lang = src_lang if use_src_lang else trg_lang
+    return voice_codes.get(lang, {}).get(gender_lang)
+
+
 @app.websocket("/")
 async def audio_socket(websocket: WebSocket):
     main_gpt_flag = False
@@ -64,8 +106,14 @@ async def audio_socket(websocket: WebSocket):
     # Create a websocket connection to Deepgram
     try:
         deepgram_live = await deepgram.transcription.live(
-            {"punctuate": True, "model": "enhanced", "language": src_lang, "encoding": "linear16", "sample_rate": 48000,
-             "channels": 1}
+            {"punctuate": True,
+             "model": "enhanced",
+             "language": src_lang,
+             "encoding": "linear16",
+             "sample_rate": 48000,
+             "channels": 1,
+             "keywords": ["Babel:10000", "Bavel:-10000", "bavel:-10000"],
+             }
         )
     except Exception as e:
         print(f'Could not open socket: {e}')
@@ -75,24 +123,18 @@ async def audio_socket(websocket: WebSocket):
     # Listen for the connection to close
     deepgram_live.registerHandler(deepgram_live.event.CLOSE, lambda _: print('Connection with deepgram closed.'))
 
-    """
-    Listen for any transcripts received from Deepgram
-    and use them for translation, querying or playing music
-    """
-
     async def translate_and_send_audio_chunk(result):
+        """
+        Listen for any transcripts received from Deepgram
+        and use them for translation, querying or playing music
+        """
         nonlocal main_gpt_flag, music_flag
-        print("MAIN_GPT_FLAG 1 = " + str(main_gpt_flag))
-        print("MUSIC_FLAG 1 = " + str(music_flag))
-        print(result)
+
         if "is_final" in result and result["is_final"]:
             transcription = result["channel"]["alternatives"][0]["transcript"]
 
-            # Checks if 'Babel' was said and turns the gpt_flag true.
-            # Also plays a sound indicating a call to GPT was requested
-            if transcription[0:5] == "Babel" and len(transcription) <= 6:
+            if transcription[0:5].lower() == "babel" and len(transcription) <= 6:
                 main_gpt_flag = True
-                print("MAIN_GPT_FLAG 2 = " + str(main_gpt_flag))
 
                 with open('noti-sound.opus', 'rb') as f:
                     data = f.read()
@@ -100,88 +142,36 @@ async def audio_socket(websocket: WebSocket):
 
                 return
 
-            if transcription[0:11].lower() == "babel music" and len(transcription) <= 12:
-                music_flag = True
-                print("MUSIC_FLAG 2 = " + str(music_flag))
+            if (transcription[0:11].lower() == "babel music" and len(transcription) <= 12 and src_lang == "en") or \
+               (transcription[0:12].lower() == "babel música" and len(transcription) <= 13 and src_lang == "es") or \
+               (transcription[0:13].lower() == "babel musique" and len(transcription) <= 14 and src_lang == "fr") or \
+               (transcription[0:13].lower() == "babele musica" and len(transcription) <= 14 and src_lang == "it") or \
+               (transcription[0:11].lower() == "babel musik" and len(transcription) <= 12 and src_lang == "de"):
 
-                with open('noti-sound.opus', 'rb') as f:
-                    data = f.read()
-                    await websocket.send_bytes(data)
+                    music_flag = True
 
-                return
+                    with open('noti-sound.opus', 'rb') as f:
+                        data = f.read()
+                        await websocket.send_bytes(data)
 
-            if transcription[0:10].lower() == "stop music" and len(transcription) <= 11:
-                with open('noti-sound.opus', 'rb') as f:
-                    data = f.read()
-                    await websocket.send_bytes(data)
+                    return
 
-                print("Stopping what is saying") #In fact it does not stop nothing lol
+            if (transcription[0:10].lower() == "stop music" and len(transcription) <= 11 and src_lang == "en") or \
+               (transcription[0:12].lower() == "parar música" and len(transcription) <= 13 and src_lang == "es") or \
+               (transcription[0:18].lower() == "arrêter la musique" and len(transcription) <= 19 and src_lang == "fr") or \
+               (transcription[0:17].lower() == "fermare la musica" and len(transcription) <= 18 and src_lang == "it") or \
+               (transcription[0:21].lower() == "stoppen sie die musik" and len(transcription) <= 22 and src_lang == "de"):
+
+                    await websocket.send_text(PAUSE_MUSIC)
+                    return
 
             if transcription == "":
                 print("Empty transcription")
                 return
 
-            # If the user is making a voice query, the speaker's voice should be in the user's source language
-            speaker = ""
-            if main_gpt_flag:
-                if src_lang == "en":
-                    if gender_lang == "Female":
-                        speaker = "en-US-JennyNeural"
-                    elif gender_lang == "Male":
-                        speaker = "en-US-BrandonNeural"
-                elif src_lang == "es":
-                    if gender_lang == "Female":
-                        speaker = "es-PE-CamilaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "es-PE-AlexNeural"
-                elif src_lang == "fr":
-                    if gender_lang == "Female":
-                        speaker = "fr-FR-DeniseNeural"
-                    elif gender_lang == "Male":
-                        speaker = "fr-FR-HenriNeural"
-                elif src_lang == "it":
-                    if gender_lang == "Female":
-                        speaker = "it-IT-ElsaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "it-IT-DiegoNeural"
-                elif trg_lang == "de":
-                    if gender_lang == "Female":
-                        speaker = "de-DE-AmalaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "de-DE-KasperNeural"
-            # Otherwise, the translation should be spoken in the target language
-            else:
-                if trg_lang == "en":
-                    if gender_lang == "Female":
-                        speaker = "en-US-JennyNeural"
-                    elif gender_lang == "Male":
-                        speaker = "en-US-BrandonNeural"
-                elif trg_lang == "es":
-                    if gender_lang == "Female":
-                        speaker = "es-PE-CamilaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "es-PE-AlexNeural"
-                elif trg_lang == "fr":
-                    if gender_lang == "Female":
-                        speaker = "fr-FR-DeniseNeural"
-                    elif gender_lang == "Male":
-                        speaker = "fr-FR-HenriNeural"
-                elif trg_lang == "it":
-                    if gender_lang == "Female":
-                        speaker = "it-IT-ElsaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "it-IT-DiegoNeural"
-                elif trg_lang == "de":
-                    if gender_lang == "Female":
-                        speaker = "de-DE-AmalaNeural"
-                    elif gender_lang == "Male":
-                        speaker = "de-DE-KasperNeural"
+            speaker = choose_voice(src_lang=src_lang, trg_lang=trg_lang, gender_lang=gender_lang,
+                                   use_src_lang=main_gpt_flag or music_flag)
 
-            azure_url = f"""https://{os.getenv("SPEECH_REGION")}.tts.speech.microsoft.com/cognitiveservices/v1"""
-
-            azure_headers = {"Ocp-Apim-Subscription-Key": F"""{os.getenv("SPEECH_KEY")}""",
-                             "Content-type": "application/ssml+xml",
-                             "X-Microsoft-OutputFormat": "ogg-48khz-16bit-mono-opus"}
             if music_flag:
                 YDL_OPTIONS = {'format': 'bestaudio',
                                'outtmpl': 'song',
@@ -192,35 +182,32 @@ async def audio_socket(websocket: WebSocket):
                                }]
                                }
 
-                allSearch = VideosSearch(transcription, limit=1)
-                title = allSearch.result()["result"][0]["title"]
-                print(f"Title:   {title}")
-                link = allSearch.result()["result"][0]["link"]
-                print(f"Link:    {link}")
+                search_all = VideosSearch(transcription, limit=1)
+                title = search_all.result()["result"][0]["title"]
+                link = search_all.result()["result"][0]["link"]
+
+                await websocket.send_bytes(synthesize_voice(text=f"Playing {title}", speaker=speaker))
+                await websocket.send_text(START_MUSIC)
 
                 with youtube_dl.YoutubeDL(YDL_OPTIONS) as ydl:
-                    info = ydl.extract_info(link, download=True)
+                    ydl.extract_info(link, download=True)
 
                 with open('song.opus', 'rb') as f:
                     data = f.read()
                     await websocket.send_bytes(data)
+                    await websocket.send_text(FINISH_MUSIC)
 
                 music_flag = False
 
             elif main_gpt_flag:
-                for sentence in gpt3_request(transcription):
-                    translation = sentence
-                    translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
-                    azure_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
-                    response_azure = req.post(azure_url, headers=azure_headers, data=azure_body)
-                    audio = response_azure.content
-                    await websocket.send_bytes(audio)
+                for sentence in gpt_request(transcription):
+                    await websocket.send_bytes(synthesize_voice(text=sentence, speaker=speaker))
                 main_gpt_flag = False
             else:
                 # Translate transcription
                 google_translate_response = translate_client.translate_text(
                     request={
-                        "parent": parent,
+                        "parent": config.GOOGLE_TRANSLATE_PARENT_DIRECTORY,
                         "contents": [transcription],
                         "mime_type": "text/plain",
                         "source_language_code": src_lang,
@@ -233,31 +220,24 @@ async def audio_socket(websocket: WebSocket):
                 else:
                     print(f"Error in translation {google_translate_response}")
                     return
-                # Fix unrecognizeable characters
-                translation = translation.encode('ascii', 'xmlcharrefreplace').decode("ascii")
-                azure_request_body = f"""<speak version='1.0' xml:lang="en-US"><voice xml:lang="en-US" xml:gender='{gender_lang}' name='{speaker}'>{translation}</voice></speak>"""
-                azure_text_to_speech_response = req.post(azure_url, headers=azure_headers, data=azure_request_body)
-                audio = azure_text_to_speech_response.content
                 main_gpt_flag = False
-                await websocket.send_bytes(audio)
+                await websocket.send_bytes(synthesize_voice(text=translation, speaker=speaker))
 
     deepgram_live.registerHandler(deepgram_live.event.TRANSCRIPT_RECEIVED, translate_and_send_audio_chunk)
 
-    """
-    Receive the audio asynchronously and send it to deepgram
-    """
-
     async def receive_audio():
+        """
+        Receive the audio asynchronously and send it to deepgram
+        """
         while True:
             audio_bytes: bytes = await websocket.receive_bytes()
             deepgram_live.send(audio_bytes)
 
-    """
-    Make sure the connection is kept alive by
-    sending a KeepAlive JSON to Deepgram every 7 seconds
-    """
-
     async def keep_deepgram_alive():
+        """
+        Make sure the connection is kept alive by
+        sending a KeepAlive JSON to Deepgram every 7 seconds
+        """
         while True:
             deepgram_live.send(json.dumps({
                 "type": "KeepAlive"

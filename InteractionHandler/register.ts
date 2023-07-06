@@ -2,6 +2,9 @@ import commands from './commands';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+/**
+ * Register and deploy the commands
+ */
 commands.registerCommands({
 	application_id: process.env.APP_ID,
 	token: process.env.TOKEN,

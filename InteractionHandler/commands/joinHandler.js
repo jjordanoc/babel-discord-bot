@@ -36,37 +36,49 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 exports.__esModule = true;
+exports.joinHandler = void 0;
 var voice_1 = require("@discordjs/voice");
 var createListeningStream_1 = require("../createListeningStream");
 /**
- * Function handler to join the bot into a voice channel
- * @param {Object} interaction Message that your application receives when a user uses an application command or a message component. See {@link https://discord.com/developers/docs/interactions/receiving-and-responding | Interaction Documentation}
+ * Handler function for join the bot into a voice channel
+ * @type {Function}
+ * @param {InteractionType} interaction Message that your application receives when a user uses an application command or a message component. See {@link https://discord.com/developers/docs/interactions/receiving-and-responding | Interaction Documentation}
  * @return {void}
  */
 function joinHandler(interaction) {
     return __awaiter(this, void 0, void 0, function () {
-        var guildId, connection, receiver_1, error_1;
+        var guildId, channel, connection, options, receiver, error_1;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     guildId = interaction.guild.id;
+                    channel = interaction.member.voice.channel;
+                    if (channel == null) {
+                        interaction.reply({ ephemeral: true, content: 'Join voice channel first.' });
+                        return [2 /*return*/];
+                    }
                     connection = (0, voice_1.joinVoiceChannel)({
-                        channelId: interaction.member.voice.channel.id,
+                        channelId: channel === null || channel === void 0 ? void 0 : channel.id,
                         guildId: guildId,
                         adapterCreator: interaction.guild.voiceAdapterCreator,
                         selfDeaf: false,
                         selfMute: true,
                     });
+                    options = {
+                        'source': interaction.options.getString('source'),
+                        'target': interaction.options.getString('target'),
+                        'gender': interaction.options.getString('gender'),
+                    };
                     _a.label = 1;
                 case 1:
                     _a.trys.push([1, 3, , 4]);
                     return [4 /*yield*/, (0, voice_1.entersState)(connection, voice_1.VoiceConnectionStatus.Ready, 20e3)];
                 case 2:
                     _a.sent();
-                    receiver_1 = connection.receiver;
-                    receiver_1.speaking.once('start', function (callerUserId) {
+                    receiver = connection.receiver;
+                    receiver.speaking.once('start', function (callerUserId) {
                         console.log('User started speaking. Called event once.');
-                        (0, createListeningStream_1.createListeningStream)(receiver_1, callerUserId, interaction.client.users.cache.get(callerUserId));
+                        (0, createListeningStream_1.createListeningStream)(connection, interaction.user.id, options);
                     });
                     interaction.reply({ ephemeral: true, content: 'Listening...' });
                     return [3 /*break*/, 4];
@@ -83,4 +95,4 @@ function joinHandler(interaction) {
         });
     });
 }
-exports["default"] = joinHandler;
+exports.joinHandler = joinHandler;
